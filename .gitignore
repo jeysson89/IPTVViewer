@@ -1,0 +1,30 @@
+# Build output
+bin/
+obj/
+dist/
+
+# Release archives
+*.zip
+*.7z
+*.rar
+
+# Debug symbols
+*.pdb
+
+# VLC native libraries (downloaded via NuGet, not stored in git)
+libvlc/
+
+# IDE / user files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local logs
+*.log
