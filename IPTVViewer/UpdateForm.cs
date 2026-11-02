@@ -123,6 +123,9 @@ namespace IPTVViewer
         private void FillData()
         {
             _txtNotes.Text = CleanNotes(_info.Notes);
+            // не выделяем весь текст при открытии
+            _txtNotes.SelectionStart = 0;
+            _txtNotes.SelectionLength = 0;
 
             var asset = _info.PreferredAsset;
             if (asset != null && !string.IsNullOrEmpty(asset.DownloadUrl))
@@ -173,9 +176,11 @@ namespace IPTVViewer
                 sb.AppendLine(line);
             }
 
+            // TextBox показывает разрывы строк только по CRLF
             var text = sb.ToString()
                 .Replace("\r\n", "\n")
                 .Replace("\n\n\n", "\n")
+                .Replace("\n", "\r\n")
                 .Trim();
             return text.Length == 0 ? "Описание изменений не указано." : text;
         }
