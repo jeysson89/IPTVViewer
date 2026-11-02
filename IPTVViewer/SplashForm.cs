@@ -86,35 +86,19 @@ namespace IPTVViewer
             using (var pen = new Pen(Theme.Border, 1))
                 g.DrawRectangle(pen, 0, 0, this.Width - 1, this.Height - 1);
 
-            int cardW = Math.Min(540, this.Width - 70);
-            int cardH = (int)(cardW * 640f / 1920f) + 44;
-            var card = new Rectangle((this.Width - cardW) / 2, (this.Height - cardH) / 2 - 12, cardW, cardH);
-
-            using (var path = RoundedPanel.Round(card, 18))
-            using (var shadow = new SolidBrush(Color.FromArgb(60, 0, 0, 0)))
-            using (var fill = new SolidBrush(Color.White))
-            {
-                var shadowRect = card;
-                shadowRect.Offset(0, 4);
-                using (var sp = RoundedPanel.Round(shadowRect, 18))
-                    g.FillPath(shadow, sp);
-                g.FillPath(fill, path);
-            }
+            int logoW = Math.Min(540, this.Width - 70);
+            int logoH = (int)(logoW * 640f / 1920f);
+            var logoRect = new Rectangle((this.Width - logoW) / 2, (this.Height - logoH) / 2 - 12, logoW, logoH);
 
             if (_logo != null)
             {
-                int pad = 26;
-                int availW = card.Width - pad * 2;
-                int availH = card.Height - pad * 2;
-                double ratio = Math.Min((double)availW / _logo.Width, (double)availH / _logo.Height);
-                int w = (int)(_logo.Width * ratio);
-                int h = (int)(_logo.Height * ratio);
-                g.DrawImage(_logo, card.X + (card.Width - w) / 2, card.Y + (card.Height - h) / 2, w, h);
+                // логотип рисуем прямо на фоне — без белой подложки и рамки
+                g.DrawImage(_logo, logoRect);
             }
 
-            // Акцентная линия под карточкой
+            // Акцентная линия под логотип
             using (var accent = new SolidBrush(Theme.Accent))
-                g.FillRectangle(accent, this.Width / 2 - 40, card.Bottom + 22, 80, 3);
+                g.FillRectangle(accent, this.Width / 2 - 40, logoRect.Bottom + 22, 80, 3);
         }
 
         protected override void Dispose(bool disposing)
