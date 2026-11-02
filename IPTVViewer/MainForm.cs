@@ -1398,11 +1398,42 @@ namespace IPTVViewer
             {
                 if (_epgTimer != null) { _epgTimer.Stop(); _epgTimer.Dispose(); }
                 if (_fsTimer != null) { _fsTimer.Stop(); _fsTimer.Dispose(); }
-                if (_currentMedia != null) { _currentMedia.Dispose(); _currentMedia = null; }
-                if (_mediaPlayer != null) { _mediaPlayer.Stop(); _mediaPlayer.Dispose(); }
-                if (_libVLC != null) _libVLC.Dispose();
             }
             catch { }
+
+            // VLC выключаем в фоновом потоке: _mediaPlayer.Stop()/Dispose()
+            // синхронно дожидается сетевых потоков libvlc и на живом
+            // IPTV-стриме может блокировать UI-поток — окно зависало при
+            // закрытии. Форма закрывается сразу, Main дождётся выключения
+            // не дольше нескольких секунд (Program.WaitForVlcShutdown).
+            try
+            {
+                var mp = _mediaPlayer; _mediaPlayer = null;
+                var lib = _libVLC; _libVLC = null;
+                var media = _currentMedia; _currentMedia = null;
+
+                if (mp != null || lib != null)
+                {
+                    var worker = new System.Threading.Thread(() =>
+                    {
+                        try { if (mp != null) mp.Stop(); } catch { }
+                        try { if (media != null) media.Dispose(); } catch { }
+                        try { if (mp != null) mp.Dispose(); } catch { }
+                        try { if (lib != null) lib.Dispose(); } catch { }
+                        Program.SignalVlcShutdownDone();
+                    });
+                    worker.IsBackground = true;
+                    worker.Start();
+                }
+                else
+                {
+                    Program.SignalVlcShutdownDone();
+                }
+            }
+            catch
+            {
+                Program.SignalVlcShutdownDone();
+            }
         }
     }
 }

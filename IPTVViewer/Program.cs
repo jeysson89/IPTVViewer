@@ -49,6 +49,10 @@ namespace IPTVViewer
                 }
 
                 Application.Run(new MainForm());
+
+                // Форма закрыта; даём фоновому потоку выключения VLC
+                // до 1,5 секунды на аккуратную остановку, затем выходим.
+                WaitForVlcShutdown(1500);
             }
             catch (Exception ex)
             {
@@ -56,6 +60,21 @@ namespace IPTVViewer
                 MessageBox.Show("Критическая ошибка:\n" + ex.Message + "\n\nЛог: " + LogPath,
                     "IPTV Newline", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private static readonly System.Threading.ManualResetEventSlim _vlcShutdownDone =
+            new System.Threading.ManualResetEventSlim(false);
+
+        /// <summary>Фоновый поток выключения VLC отчитается о завершении.</summary>
+        public static void SignalVlcShutdownDone()
+        {
+            try { _vlcShutdownDone.Set(); } catch { }
+        }
+
+        /// <summary>Ждать завершения выключения VLC не дольше указанного времени.</summary>
+        public static void WaitForVlcShutdown(int milliseconds)
+        {
+            try { _vlcShutdownDone.Wait(milliseconds); } catch { }
         }
 
         /// <summary>
