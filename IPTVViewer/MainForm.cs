@@ -1154,7 +1154,7 @@ namespace IPTVViewer
                 return;
             }
             _updateCheckRunning = true;
-            if (!silent) SetStatus("Проверка обновлений на GitHub...");
+            if (!silent) SetStatus("Проверка обновлений...");
 
             var repo = _settings.UpdateRepo;
 

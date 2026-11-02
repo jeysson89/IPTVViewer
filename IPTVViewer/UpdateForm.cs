@@ -15,7 +15,6 @@ namespace IPTVViewer
         private Label _lblProgress;
         private ProgressBar _progress;
         private Button _btnDownload;
-        private Button _btnOpen;
         private Button _btnLater;
         private WebClient _client;
         private bool _downloading;
@@ -47,7 +46,7 @@ namespace IPTVViewer
             title.Location = new Point(20, 12);
             header.Controls.Add(title);
 
-            var subtitle = Theme.CreateLabel("Обновление загружается с GitHub Releases", true, 9f, false);
+            var subtitle = Theme.CreateLabel("Ваша версия будет заменена новейшей и перезапущена", true, 9f, false);
             subtitle.Location = new Point(22, 38);
             header.Controls.Add(subtitle);
             this.Controls.Add(header);
@@ -111,17 +110,10 @@ namespace IPTVViewer
             _btnDownload.Click += (s, e) => StartDownload();
             this.Controls.Add(_btnDownload);
 
-            _btnOpen = Theme.CreateButton("Открыть на GitHub", false);
-            _btnOpen.Size = new Size(160, 38);
-            _btnOpen.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
-            _btnOpen.Location = new Point(22, 492);
-            _btnOpen.Click += (s, e) => OpenReleasePage();
-            this.Controls.Add(_btnOpen);
-
             _btnLater = Theme.CreateButton("Позже", false);
             _btnLater.Size = new Size(90, 38);
             _btnLater.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
-            _btnLater.Location = new Point(352, 492);
+            _btnLater.Location = new Point(290, 492);
             _btnLater.Click += (s, e) => this.Close();
             this.Controls.Add(_btnLater);
 
@@ -130,10 +122,7 @@ namespace IPTVViewer
 
         private void FillData()
         {
-            var notes = string.IsNullOrWhiteSpace(_info.Notes)
-                ? "Описание изменений не указано."
-                : _info.Notes.Replace("\r\n", "\n").Replace("\n", "\r\n");
-            _txtNotes.Text = notes;
+            _txtNotes.Text = CleanNotes(_info.Notes);
 
             var asset = _info.PreferredAsset;
             if (asset != null && !string.IsNullOrEmpty(asset.DownloadUrl))
@@ -144,9 +133,51 @@ namespace IPTVViewer
             }
             else
             {
-                _lblAsset.Text = "Готовый файл обновления в релизе не найден — откройте страницу GitHub.";
+                _lblAsset.Text = "Файл обновления пока недоступен. Попробуйте позже.";
                 _btnDownload.Enabled = false;
             }
+        }
+
+        /// <summary>
+        /// Заметки релиза предназначены только для чтения внутри приложения:
+        /// убираем разметку и упоминания внешних сервисов.
+        /// </summary>
+        private static string CleanNotes(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return "Описание изменений не указано.";
+
+            var sb = new System.Text.StringBuilder();
+            foreach (var rawLine in raw.Replace("\r\n", "\n").Split('\n'))
+            {
+                var line = rawLine.Trim();
+                if (line.Length == 0)
+                {
+                    if (sb.Length > 0) sb.AppendLine();
+                    continue;
+                }
+
+                // скрываем упоминания площадки и технические подробности
+                var low = line.ToLowerInvariant();
+                if (low.Contains("github") || low.Contains("гитхаб") ||
+                    low.Contains("http") || low.Contains("zip") ||
+                    low.Contains("libvlc"))
+                    continue;
+
+                line = line.Replace("**", null).Replace("`", null);
+                if (line.StartsWith("#", StringComparison.Ordinal))
+                    line = line.TrimStart('#', ' '); // заголовки markdown
+                if (line.StartsWith("- ", StringComparison.Ordinal))
+                    line = line.Substring(2);
+
+                sb.AppendLine(line);
+            }
+
+            var text = sb.ToString()
+                .Replace("\r\n", "\n")
+                .Replace("\n\n\n", "\n")
+                .Trim();
+            return text.Length == 0 ? "Описание изменений не указано." : text;
         }
 
         private static bool IsExeAsset(ReleaseAsset asset)
@@ -155,29 +186,15 @@ namespace IPTVViewer
                    asset.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
         }
 
-        private void OpenReleasePage()
-        {
-            try
-            {
-                var url = string.IsNullOrEmpty(_info.ReleaseUrl)
-                    ? "https://github.com/" + UpdateChecker.DefaultRepo + "/releases"
-                    : _info.ReleaseUrl;
-                Process.Start(url);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "Не удалось открыть браузер:\n" + ex.Message,
-                    "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
         private void StartDownload()
         {
             if (_downloading) return;
             var asset = _info.PreferredAsset;
             if (asset == null || string.IsNullOrEmpty(asset.DownloadUrl))
             {
-                OpenReleasePage();
+                MessageBox.Show(this,
+                    "Файл обновления пока недоступен. Попробуйте позже.",
+                    "Обновление", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -195,7 +212,6 @@ namespace IPTVViewer
 
             _downloading = true;
             _btnDownload.Enabled = false;
-            _btnOpen.Enabled = false;
             _progress.Style = ProgressBarStyle.Blocks;
             _progress.Visible = true;
             _lblProgress.Visible = true;
@@ -302,7 +318,6 @@ namespace IPTVViewer
             }
 
             _btnDownload.Enabled = false;
-            _btnOpen.Enabled = false;
             _lblAsset.Text = "Установка: замена приложения...";
             _progress.Style = ProgressBarStyle.Marquee;
             _progress.Visible = true;
@@ -348,7 +363,6 @@ namespace IPTVViewer
             _progress.Visible = false;
             _lblProgress.Visible = false;
             _btnDownload.Enabled = _info.PreferredAsset != null;
-            _btnOpen.Enabled = true;
         }
 
         private static string BuildTargetPath(ReleaseAsset asset)

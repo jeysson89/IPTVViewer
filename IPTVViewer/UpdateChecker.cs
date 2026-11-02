@@ -173,18 +173,18 @@ namespace IPTVViewer
                     catch { }
 
                     if (http.StatusCode == HttpStatusCode.NotFound)
-                        return "Релизы не найдены (репозиторий или релиз ещё не опубликован).";
+                        return "Обновления временно недоступны. Попробуйте позже.";
                     if (http.StatusCode == HttpStatusCode.Forbidden || (int)http.StatusCode == 429)
-                        return "GitHub временно ограничил запросы. Попробуйте позже." +
+                        return "Сервер обновлений временно перегружен. Попробуйте позже." +
                                (string.IsNullOrEmpty(message) ? "" : "\n" + message);
-                    return "GitHub вернул ошибку " + (int)http.StatusCode + " " + http.StatusDescription +
+                    return "Сервер обновлений вернул ошибку " + (int)http.StatusCode + " " + http.StatusDescription +
                            (string.IsNullOrEmpty(message) ? "" : "\n" + message);
                 }
                 catch { }
             }
 
             if (wex.Status == WebExceptionStatus.Timeout)
-                return "Превышено время ожидания ответа GitHub.";
+                return "Превышено время ожидания ответа сервера обновлений.";
             return "Ошибка сети: " + wex.Message;
         }
 
@@ -194,7 +194,7 @@ namespace IPTVViewer
             var obj = json.DeserializeObject(jsonText) as Dictionary<string, object>;
             if (obj == null)
             {
-                result.Error = "Некорректный ответ GitHub.";
+                result.Error = "Сервер обновлений вернул некорректный ответ.";
                 return;
             }
 
