@@ -12,7 +12,7 @@
     <Product>IPTV Newline</Product>
     <AssemblyTitle>IPTV Newline</AssemblyTitle>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-    <Version>0.0.7</Version>
+    <Version>0.0.8</Version>
     <Deterministic>true</Deterministic>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>

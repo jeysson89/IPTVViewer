@@ -73,6 +73,7 @@ namespace IPTVViewer
         private Button _btnPlay;
         private Button _btnStop;
         private Button _btnSettings;
+        private Button _btnOnTop;
         private Button _btnFullscreen;
         private TrackBar _volume;
         private ToolStripStatusLabel _lblStatus;
@@ -273,28 +274,21 @@ namespace IPTVViewer
             // ===== Верхняя панель =====
             _topPanel = new Panel { Dock = DockStyle.Top, Height = 68, BackColor = Theme.Panel };
 
-            var badge = new RoundedPanel
-            {
-                Location = new Point(12, 12),
-                Size = new Size(132, 44),
-                Radius = 8,
-                FillColor = Color.White,
-                BorderColor = Theme.Border,
-                Padding = new Padding(8, 6, 8, 6)
-            };
+            // логотип — прямо на панели, без рамки и подложки
+            // (картинка с прозрачным фоном, цвет панели под ней родной)
             var logo = LoadLogo();
             if (logo != null)
             {
                 var pic = new PictureBox
                 {
-                    Dock = DockStyle.Fill,
+                    Location = new Point(12, 14),
+                    Size = new Size(120, 40),
                     SizeMode = PictureBoxSizeMode.Zoom,
-                    BackColor = Color.White,
+                    BackColor = Theme.Panel,
                     Image = logo
                 };
-                badge.Controls.Add(pic);
+                _topPanel.Controls.Add(pic);
             }
-            _topPanel.Controls.Add(badge);
 
             var title = Theme.CreateLabel("IPTV Newline", false, 15f, true);
             title.Location = new Point(156, 22);
@@ -306,10 +300,19 @@ namespace IPTVViewer
             _btnSettings.Click += (s, e) => OpenSettings();
             _topPanel.Controls.Add(_btnSettings);
 
+            _btnOnTop = Theme.CreateButton("Поверх всех окон", false);
+            _btnOnTop.Size = new Size(160, 30);
+            _btnOnTop.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnOnTop.Click += (s, e) => ToggleTopMost();
+            StyleTopMostButton();
+            _topPanel.Controls.Add(_btnOnTop);
+
             Action layoutTopButtons = () =>
             {
                 _btnSettings.Left = _topPanel.Width - _btnSettings.Width - 14;
+                _btnOnTop.Left = _btnSettings.Left - _btnOnTop.Width - 8;
                 _btnSettings.Top = (_topPanel.Height - _btnSettings.Height) / 2;
+                _btnOnTop.Top = (_topPanel.Height - _btnOnTop.Height) / 2;
             };
             _topPanel.Resize += (s, e) => layoutTopButtons();
             layoutTopButtons();
@@ -329,6 +332,7 @@ namespace IPTVViewer
             var sourceTips = new ToolTip();
             sourceTips.SetToolTip(_btnSourcePortal, "Источник: newline.iptvportal.ru");
             sourceTips.SetToolTip(_btnSourceIsp, "Источник: tv.isp-nl.ru/nltv.m3u");
+            sourceTips.SetToolTip(_btnOnTop, "Держать окно поверх всех программ");
 
             this.Controls.Add(_topPanel);
 
@@ -611,6 +615,36 @@ namespace IPTVViewer
             int distance = _split.Width - ChannelPanelWidth - _split.SplitterWidth;
             if (distance > 0)
                 _split.SplitterDistance = distance;
+        }
+
+        private void ToggleTopMost()
+        {
+            TopMost = !TopMost;
+            StyleTopMostButton();
+            SetStatus(TopMost ? "Окно закреплено поверх всех программ" : "Обычный режим окна");
+        }
+
+        private void StyleTopMostButton()
+        {
+            try
+            {
+                if (_btnOnTop == null) return;
+                _btnOnTop.Text = TopMost ? "Поверх всех окон (вкл)" : "Поверх всех окон";
+                if (TopMost)
+                {
+                    _btnOnTop.BackColor = Theme.Accent;
+                    _btnOnTop.ForeColor = Color.White;
+                    _btnOnTop.FlatAppearance.MouseOverBackColor = Theme.AccentHover;
+                }
+                else
+                {
+                    _btnOnTop.BackColor = Theme.PanelAlt;
+                    _btnOnTop.ForeColor = Theme.Text;
+                    _btnOnTop.FlatAppearance.MouseOverBackColor = Theme.PanelHover;
+                }
+                _btnOnTop.Invalidate();
+            }
+            catch { }
         }
 
         private static Image LoadLogo()
