@@ -31,14 +31,17 @@ NEWLINE network и движком **VLC** (LibVLCSharp). Поддерживае�
 
 ## Скачать
 
-Готовый архив: раздел [Releases](../../releases) репозитория.
+Готовые файлы: раздел [Releases](../../releases) репозитория.
 
-1. Скачайте `IPTVViewer_Newline_VLC.zip` из последнего релиза.
-2. Распакуйте в любую папку.
-3. Запустите `IPTVViewer.exe`.
+1. Скачайте `IPTVViewer.exe` — **единый файл**: движок VLC встроен внутрь
+   и распаковывается при первом запуске в `%LOCALAPPDATA%\IPTVViewer\vlc`.
+2. Либо скачайте `IPTVViewer_Newline_VLC.zip` (портативный вариант
+   с папкой `libvlc`), распакуйте в любую папку и запустите `IPTVViewer.exe`.
 
-> Папку `libvlc` нельзя удалять или переносить — это движок VLC, он должен
-> находиться рядом с `IPTVViewer.exe`.
+> В портативной версии папку `libvlc` нельзя удалять или переносить —
+> это движок VLC, он должен находиться рядом с `IPTVViewer.exe`.
+> При использовании единого `IPTVViewer.exe` первый запуск занимает
+> несколько секунд дольше (распаковка движка), дальнейшие — мгновенно.
 
 ## Требования
 
@@ -50,12 +53,14 @@ NEWLINE network и движком **VLC** (LibVLCSharp). Поддерживае�
 
 ```powershell
 cd IPTVViewer
+powershell -File pack_vlc.ps1      # создание vlc-data\vlc-x64.zip / vlc-x86.zip
 dotnet build IPTVViewer.csproj -c Release
 ```
 
-Результат: `bin\Release\net48\IPTVViewer.exe` вместе с папкой `libvlc`.
+Результат: `bin\Release\net48\IPTVViewer.exe` (единый exe со встроенным VLC)
+или `bin\Release\net48` вместе с папкой `libvlc` (портативный вариант).
 
-Для сборки портативного архива скопируйте содержимое `bin\Release\net48`
+Для портативного архива скопируйте содержимое `bin\Release\net48`
 в отдельную папку и упакуйте в ZIP (папка `libvlc` обязательна).
 
 ## Проверка обновлений
@@ -95,6 +100,9 @@ IPTVViewer.exe --check-updates
 | `MainForm.cs` | Главное окно, список каналов, полный экран, EPG |
 | `EpgLoader.cs` | Скачивание, разбор и кэширование XMLTV |
 | `EpgForm.cs` | Окно телепрограммы канала |
+| `VlcLocator.cs` | Поиск/распаковка движка VLC (единый exe) |
+| `DepsLoader.cs` | Загрузка LibVLCSharp из ресурсов (единый exe) |
+| `pack_vlc.ps1` | Упаковка VLC в vlc-data для встраивания |
 | `UpdateChecker.cs` | Запрос релизов GitHub и сравнение версий |
 | `UpdateForm.cs` | Окно обновления и загрузка архива |
 | `SettingsManager.cs` | Настройки в LocalAppData |

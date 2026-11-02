@@ -8,6 +8,9 @@ dist/
 *.7z
 *.rar
 
+# Packed VLC data for single-exe build (created by pack_vlc.ps1)
+IPTVViewer/vlc-data/
+
 # Debug symbols
 *.pdb
 

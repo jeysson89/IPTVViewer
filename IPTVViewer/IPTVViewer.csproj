@@ -11,7 +11,7 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Product>IPTV Viewer</Product>
     <AssemblyTitle>IPTV Viewer</AssemblyTitle>
-    <Version>0.0.1</Version>
+    <Version>0.0.2</Version>
     <Deterministic>true</Deterministic>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
@@ -33,5 +33,30 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\logo.png" Condition="Exists('Resources\logo.png')" />
+  </ItemGroup>
+
+  <!-- Единый exe: VLC упаковывается внутрь и распаковывается при первом запуске. -->
+  <ItemGroup Condition="Exists('vlc-data\vlc-x64.zip') And Exists('vlc-data\vlc-x86.zip')">
+    <EmbeddedResource Include="vlc-data\vlc-x64.zip" LogicalName="IPTVViewer.vlc-x64.zip" />
+    <EmbeddedResource Include="vlc-data\vlc-x86.zip" LogicalName="IPTVViewer.vlc-x86.zip" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+
+  <!-- Единый exe: управляемые зависимости встроены и загружаются из памяти. -->
+  <ItemGroup>
+    <ManagedDep Include="LibVLCSharp" DepDir="libvlcsharp\3.9.4\lib\net471" />
+    <ManagedDep Include="LibVLCSharp.WinForms" DepDir="libvlcsharp.winforms\3.9.4\lib\net40" />
+    <ManagedDep Include="System.Buffers" DepDir="system.buffers\4.6.0\lib\net462" />
+    <ManagedDep Include="System.Memory" DepDir="system.memory\4.6.0\lib\net462" />
+    <ManagedDep Include="System.Numerics.Vectors" DepDir="system.numerics.vectors\4.6.0\lib\net462" />
+    <ManagedDep Include="System.Runtime.CompilerServices.Unsafe" DepDir="system.runtime.compilerservices.unsafe\6.1.0\lib\net462" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="@(ManagedDep->'$(USERPROFILE)\.nuget\packages\%(DepDir)\%(Identity).dll')"
+                      LogicalName="IPTVViewer.deps.%(Filename).dll" />
   </ItemGroup>
 </Project>

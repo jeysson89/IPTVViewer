@@ -9,6 +9,8 @@ namespace IPTVViewer
         [STAThread]
         static void Main(string[] args)
         {
+            DepsLoader.Register();
+
             AppDomain.CurrentDomain.UnhandledException += (s, e) => LogError(e.ExceptionObject as Exception);
             Application.ThreadException += (s, e) => LogError(e.Exception);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -32,6 +34,12 @@ namespace IPTVViewer
             {
                 var startupSettings = SettingsManager.Load();
                 Theme.SetMode(startupSettings.LightTheme);
+
+                // Распаковка VLC из единого exe — заранее, пока показывается заставка.
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try { VlcLocator.Ensure(SettingsManager.DataDir); } catch { }
+                });
 
                 using (var splash = new SplashForm())
                 {

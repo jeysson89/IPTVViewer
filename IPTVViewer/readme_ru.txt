@@ -8,11 +8,11 @@ IPTV Viewer — NEWLINE network (VLC)
   1. IPTVPortal — https://newline.iptvportal.ru/
   2. ISP-NL     — http://tv.isp-nl.ru/nltv.m3u
 
-Как запустить (портативная версия):
-  1. Распакуйте архив IPTVViewer_Newline_VLC.zip в любую папку.
-  2. Запустите IPTVViewer.exe.
-  3. Папку libvlc НЕ удаляйте и не переносите — это движок VLC,
-     он должен лежать рядом с IPTVViewer.exe.
+Как запустить:
+  Вариант 1 (один файл): запустите IPTVViewer.exe — движок VLC встроен
+    внутрь и распаковывается при первом запуске (несколько секунд).
+  Вариант 2 (портативный): распакуйте архив в любую папку,
+    запустите IPTVViewer.exe; папка libvlc должна лежать рядом.
 
 Требования:
   - Windows 7 SP1 и новее (64-битная или 32-битная).

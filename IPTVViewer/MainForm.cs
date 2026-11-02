@@ -104,7 +104,7 @@ namespace IPTVViewer
         {
             try
             {
-                Core.Initialize();
+                Core.Initialize(VlcLocator.Ensure(SettingsManager.DataDir));
                 _libVLC = new LibVLC();
                 _mediaPlayer = new MediaPlayer(_libVLC);
                 _mediaPlayer.Volume = 80;
