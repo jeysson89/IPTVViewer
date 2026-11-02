@@ -88,7 +88,7 @@ namespace IPTVViewer
             }
             catch { }
 
-            this.Text = "IPTV Viewer — NEWLINE network";
+            this.Text = "IPTV Newline — NEWLINE network";
             this.Icon = AppIcon.Get();
             this.StartPosition = FormStartPosition.Manual;
             this.Location = new Point(_settings.WindowX, _settings.WindowY);
@@ -146,13 +146,9 @@ namespace IPTVViewer
             }
             _topPanel.Controls.Add(badge);
 
-            var title = Theme.CreateLabel("IPTV Viewer", false, 17f, true);
+            var title = Theme.CreateLabel("IPTV Newline", false, 17f, true);
             title.Location = new Point(208, 16);
             _topPanel.Controls.Add(title);
-
-            var subtitle = Theme.CreateLabel("NEWLINE network  ·  VLC engine  ·  EPG", true, 9f, false);
-            subtitle.Location = new Point(210, 46);
-            _topPanel.Controls.Add(subtitle);
 
             _btnSettings = Theme.CreateButton("Настройки", false);
             _btnSettings.Size = new Size(110, 34);
@@ -175,7 +171,7 @@ namespace IPTVViewer
             _btnSourcePortal.Location = new Point(94, 80);
             _topPanel.Controls.Add(_btnSourcePortal);
 
-            _btnSourceIsp = CreateSourceButton("IPTV", 1);
+            _btnSourceIsp = CreateSourceButton("M3U", 1);
             _btnSourceIsp.Location = new Point(244, 80);
             _topPanel.Controls.Add(_btnSourceIsp);
 

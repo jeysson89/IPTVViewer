@@ -1,4 +1,4 @@
-# IPTV Viewer — NEWLINE network
+# IPTV Newline — NEWLINE network
 
 Портативный IPTV-плеер для Windows с тёмной и светлой темами, оригинальным логотипом
 NEWLINE network и движком **VLC** (LibVLCSharp). Поддерживает Windows 7 SP1 и новее.

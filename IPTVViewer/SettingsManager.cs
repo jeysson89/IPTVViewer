@@ -40,7 +40,21 @@ namespace IPTVViewer
                 if (!File.Exists(_file))
                     return new AppSettings();
                 var txt = File.ReadAllText(_file);
-                return _json.Deserialize<AppSettings>(txt) ?? new AppSettings();
+                var s = _json.Deserialize<AppSettings>(txt) ?? new AppSettings();
+                // ссылки на плейлисты зашиты — пустые/старые значения восстанавливаем
+                var defaults = new AppSettings().SourceUrls;
+                if (s.SourceUrls == null)
+                    s.SourceUrls = new List<string>();
+                for (int i = 0; i < defaults.Count; i++)
+                {
+                    var value = (i < s.SourceUrls.Count) ? s.SourceUrls[i] : null;
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        while (s.SourceUrls.Count <= i) s.SourceUrls.Add("");
+                        s.SourceUrls[i] = defaults[i];
+                    }
+                }
+                return s;
             }
             catch
             {

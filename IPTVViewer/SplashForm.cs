@@ -21,7 +21,7 @@ namespace IPTVViewer
 
             _lblVersion = new Label
             {
-                Text = "v" + UpdateChecker.CurrentVersion + "  ·  VLC engine",
+                Text = "v" + UpdateChecker.CurrentVersion,
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Theme.TextDim,
                 BackColor = Color.Transparent,
@@ -39,7 +39,7 @@ namespace IPTVViewer
 
         private void InitializeComponent()
         {
-            this.Text = "IPTV Viewer";
+            this.Text = "IPTV Newline";
             this.Icon = AppIcon.Get();
             this.Size = new Size(660, 380);
             this.FormBorderStyle = FormBorderStyle.None;

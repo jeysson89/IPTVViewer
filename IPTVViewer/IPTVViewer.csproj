@@ -9,10 +9,10 @@
     <Prefer32Bit>false</Prefer32Bit>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <Product>IPTV Viewer</Product>
-    <AssemblyTitle>IPTV Viewer</AssemblyTitle>
+    <Product>IPTV Newline</Product>
+    <AssemblyTitle>IPTV Newline</AssemblyTitle>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-    <Version>0.0.3</Version>
+    <Version>0.0.4</Version>
     <Deterministic>true</Deterministic>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>

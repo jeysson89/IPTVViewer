@@ -52,7 +52,7 @@ namespace IPTVViewer
             {
                 LogError(ex);
                 MessageBox.Show("Критическая ошибка:\n" + ex.Message + "\n\nЛог: " + LogPath,
-                    "IPTV Viewer", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "IPTV Newline", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 

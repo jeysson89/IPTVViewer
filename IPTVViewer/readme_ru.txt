@@ -1,4 +1,4 @@
-IPTV Viewer — NEWLINE network (VLC)
+IPTV Newline — NEWLINE network (VLC)
 ====================================
 
 Приложение для просмотра IPTV с тёмной и светлой темами интерфейса,

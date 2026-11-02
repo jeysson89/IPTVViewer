@@ -29,7 +29,7 @@ namespace IPTVViewer
 
         private void InitializeComponent()
         {
-            this.Text = "Обновление IPTV Viewer";
+            this.Text = "Обновление IPTV Newline";
             this.Icon = AppIcon.Get();
             this.Size = new Size(680, 580);
             this.MinimumSize = new Size(560, 460);

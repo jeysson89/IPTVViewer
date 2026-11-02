@@ -10,8 +10,6 @@ namespace IPTVViewer
         private readonly AppSettings _settings;
         private readonly Action _checkUpdates;
         private ComboBox _cbDefaultSource;
-        private TextBox _txtUrl1;
-        private TextBox _txtUrl2;
         private CheckBox _chkAutoLoad;
         private CheckBox _chkExternal;
         private CheckBox _chkUpdates;
@@ -49,49 +47,39 @@ namespace IPTVViewer
             header.Controls.Add(title);
             this.Controls.Add(header);
 
-            var lblSource = Theme.CreateLabel("Источник по умолчанию", true, 9f, false);
+            var lblSource = Theme.CreateLabel("Источник по умолчанию (кнопки под логотипом)", true, 9f, false);
             lblSource.Location = new Point(20, 76);
             _cbDefaultSource = new ComboBox { Location = new Point(20, 98), Size = new Size(620, 26) };
             Theme.StyleCombo(_cbDefaultSource);
 
-            var lbl1 = Theme.CreateLabel("URL плейлиста 1 (IPTVPortal)", true, 9f, false);
-            lbl1.Location = new Point(20, 136);
-            _txtUrl1 = new TextBox { Location = new Point(20, 158), Size = new Size(620, 26) };
-            Theme.StyleTextBox(_txtUrl1);
-
-            var lbl2 = Theme.CreateLabel("URL плейлиста 2 (ISP-NL)", true, 9f, false);
-            lbl2.Location = new Point(20, 196);
-            _txtUrl2 = new TextBox { Location = new Point(20, 218), Size = new Size(620, 26) };
-            Theme.StyleTextBox(_txtUrl2);
-
             _chkAutoLoad = new DarkCheckBox
             {
                 Text = "Автоматически загружать плейлист при запуске",
-                Location = new Point(20, 256),
+                Location = new Point(20, 136),
                 Size = new Size(560, 26)
             };
             _chkExternal = new DarkCheckBox
             {
                 Text = "Открывать потоки во внешнем проигрывателе",
-                Location = new Point(20, 286),
+                Location = new Point(20, 166),
                 Size = new Size(560, 26)
             };
             _chkUpdates = new DarkCheckBox
             {
                 Text = "Проверять обновления автоматически при запуске",
-                Location = new Point(20, 316),
+                Location = new Point(20, 196),
                 Size = new Size(560, 26)
             };
             _chkEpg = new DarkCheckBox
             {
                 Text = "Загружать телепрограмму (EPG)",
-                Location = new Point(20, 346),
+                Location = new Point(20, 226),
                 Size = new Size(560, 26)
             };
             _chkLight = new DarkCheckBox
             {
                 Text = "Светлая тема оформления",
-                Location = new Point(20, 376),
+                Location = new Point(20, 256),
                 Size = new Size(560, 26)
             };
 
@@ -119,10 +107,6 @@ namespace IPTVViewer
 
             this.Controls.Add(lblSource);
             this.Controls.Add(_cbDefaultSource);
-            this.Controls.Add(lbl1);
-            this.Controls.Add(_txtUrl1);
-            this.Controls.Add(lbl2);
-            this.Controls.Add(_txtUrl2);
             this.Controls.Add(_chkAutoLoad);
             this.Controls.Add(_chkExternal);
             this.Controls.Add(_chkUpdates);
@@ -139,14 +123,9 @@ namespace IPTVViewer
 
         private void FillControls()
         {
-            _cbDefaultSource.Items.Add("IPTVPortal — newline.iptvportal.ru");
-            _cbDefaultSource.Items.Add("ISP-NL — tv.isp-nl.ru/nltv.m3u");
+            _cbDefaultSource.Items.Add("IPTVPortal — левая кнопка");
+            _cbDefaultSource.Items.Add("M3U — правая кнопка");
             _cbDefaultSource.SelectedIndex = ClampIndex(_settings.SelectedSourceIndex, _cbDefaultSource.Items.Count);
-            if (_settings.SourceUrls != null && _settings.SourceUrls.Count >= 2)
-            {
-                _txtUrl1.Text = _settings.SourceUrls[0];
-                _txtUrl2.Text = _settings.SourceUrls[1];
-            }
             _chkAutoLoad.Checked = _settings.AutoLoad;
             _chkExternal.Checked = _settings.UseExternalPlayer;
             _chkUpdates.Checked = _settings.CheckUpdatesOnStartup;
@@ -168,11 +147,6 @@ namespace IPTVViewer
             if (this.DialogResult == DialogResult.OK)
             {
                 _settings.SelectedSourceIndex = _cbDefaultSource.SelectedIndex;
-                var urls = _settings.SourceUrls ?? new List<string>();
-                while (urls.Count < 2) urls.Add("");
-                urls[0] = _txtUrl1.Text.Trim();
-                urls[1] = _txtUrl2.Text.Trim();
-                _settings.SourceUrls = urls;
                 _settings.AutoLoad = _chkAutoLoad.Checked;
                 _settings.UseExternalPlayer = _chkExternal.Checked;
                 _settings.CheckUpdatesOnStartup = _chkUpdates.Checked;
