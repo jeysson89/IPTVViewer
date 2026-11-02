@@ -51,6 +51,7 @@ namespace IPTVViewer
         private Panel _searchWrap;
         private Panel _listWrap;
         private Panel _videoWrap;
+        private TableLayoutPanel _videoHost;
         private Panel _controlsPanel;
         private Panel _fsOverlay;
         private StatusStrip _status;
@@ -240,12 +241,14 @@ namespace IPTVViewer
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
                 RowCount = 2,
-                BackColor = Theme.Bg
+                BackColor = Theme.Bg,
+                Padding = new Padding(0)
             };
+            _videoHost = videoHost;
             videoHost.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             videoHost.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
 
-            _videoWrap = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black, Padding = new Padding(0) };
+            _videoWrap = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black, Padding = new Padding(0), Margin = new Padding(0) };
             if (_mediaPlayer != null)
             {
                 // двойной клик по видео ловится глобальным хуком (InstallMouseHook),
@@ -264,7 +267,8 @@ namespace IPTVViewer
             {
                 Dock = DockStyle.Fill,
                 BackColor = Theme.Panel,
-                Padding = new Padding(12, 8, 12, 8)
+                Padding = new Padding(12, 8, 12, 8),
+                Margin = new Padding(0)
             };
 
             _btnPlay = Theme.CreateButton("▶  Воспроизвести", true);
@@ -548,6 +552,9 @@ namespace IPTVViewer
             LayoutFullscreenOverlay();
             _fsOverlay.BringToFront();
 
+            // убираем зарезервированную строку контролов — видео занимает весь экран
+            try { _videoHost.RowStyles[1].Height = 0f; } catch { }
+
             FormBorderStyle = FormBorderStyle.None;
             WindowState = FormWindowState.Maximized;
 
@@ -566,6 +573,9 @@ namespace IPTVViewer
 
             AttachChannelPanelToSplit();
             _split.Panel2Collapsed = false;
+
+            // возвращаем строку контролов
+            try { _videoHost.RowStyles[1].Height = 52f; } catch { }
 
             FormBorderStyle = _prevBorder;
             WindowState = FormWindowState.Normal;
