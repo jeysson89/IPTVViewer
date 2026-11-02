@@ -22,8 +22,17 @@ namespace IPTVViewer
                 return;
             }
 
+            if (args != null && Array.IndexOf(args, "--epg-test") >= 0)
+            {
+                RunEpgTest();
+                return;
+            }
+
             try
             {
+                var startupSettings = SettingsManager.Load();
+                Theme.SetMode(startupSettings.LightTheme);
+
                 using (var splash = new SplashForm())
                 {
                     Application.Run(splash);
@@ -37,6 +46,56 @@ namespace IPTVViewer
                 MessageBox.Show("Критическая ошибка:\n" + ex.Message + "\n\nЛог: " + LogPath,
                     "IPTV Viewer", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private static void RunEpgTest()
+        {
+            var sb = new System.Text.StringBuilder();
+            try
+            {
+                var settings = SettingsManager.Load();
+                var url = settings.SourceUrls != null && settings.SourceUrls.Count > settings.SelectedSourceIndex
+                    ? settings.SourceUrls[settings.SelectedSourceIndex]
+                    : null;
+
+                sb.AppendLine("source=" + url);
+
+                var playlist = PlaylistLoader.Load(url);
+                sb.AppendLine("channels=" + playlist.Channels.Count);
+                sb.AppendLine("epgUrl=" + (playlist.EpgUrl ?? ""));
+
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var epg = EpgLoader.Load(playlist.EpgUrl, playlist.Channels);
+                watch.Stop();
+
+                sb.AppendLine("elapsedMs=" + watch.ElapsedMilliseconds);
+                sb.AppendLine("empty=" + epg.IsEmpty);
+
+                int total = 0, withCurrent = 0;
+                foreach (var ch in playlist.Channels)
+                {
+                    var programs = epg.GetPrograms(ch);
+                    total += programs.Count;
+                    var current = epg.GetCurrent(ch, DateTime.Now);
+                    if (current != null)
+                    {
+                        withCurrent++;
+                        if (withCurrent <= 10)
+                            sb.AppendLine("now: " + ch.Name + " -> " + current.Title + " " + current.TimeRange);
+                    }
+                }
+
+                sb.AppendLine("programs=" + total);
+                sb.AppendLine("channelsWithCurrent=" + withCurrent);
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine("error=" + ex);
+            }
+
+            Directory.CreateDirectory(SettingsManager.DataDir);
+            File.WriteAllText(Path.Combine(SettingsManager.DataDir, "epgtest.log"), sb.ToString());
+            Console.WriteLine(sb.ToString());
         }
 
         private static void RunUpdateCheck(string[] args)

@@ -8,19 +8,23 @@ namespace IPTVViewer
     public partial class SettingsForm : Form
     {
         private readonly AppSettings _settings;
+        private readonly Action _checkUpdates;
         private ComboBox _cbDefaultSource;
         private TextBox _txtUrl1;
         private TextBox _txtUrl2;
         private CheckBox _chkAutoLoad;
         private CheckBox _chkExternal;
         private CheckBox _chkUpdates;
-        private TextBox _txtRepo;
+        private CheckBox _chkLight;
+        private CheckBox _chkEpg;
+        private Button _btnCheckUpdates;
         private Button _btnOk;
         private Button _btnCancel;
 
-        public SettingsForm(AppSettings settings)
+        public SettingsForm(AppSettings settings, Action checkUpdates = null)
         {
             _settings = settings;
+            _checkUpdates = checkUpdates;
             InitializeComponent();
             FillControls();
         }
@@ -28,7 +32,7 @@ namespace IPTVViewer
         private void InitializeComponent()
         {
             this.Text = "Настройки";
-            this.Size = new Size(680, 570);
+            this.Size = new Size(680, 552);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
@@ -59,48 +63,57 @@ namespace IPTVViewer
             _txtUrl2 = new TextBox { Location = new Point(20, 218), Size = new Size(620, 26) };
             Theme.StyleTextBox(_txtUrl2);
 
-            _chkAutoLoad = new CheckBox
+            _chkAutoLoad = new DarkCheckBox
             {
                 Text = "Автоматически загружать плейлист при запуске",
-                Location = new Point(20, 262),
-                Size = new Size(520, 24),
-                ForeColor = Theme.Text,
-                BackColor = Color.Transparent,
-                FlatStyle = FlatStyle.Flat
+                Location = new Point(20, 256),
+                Size = new Size(560, 26)
             };
-            _chkExternal = new CheckBox
+            _chkExternal = new DarkCheckBox
             {
                 Text = "Открывать потоки во внешнем проигрывателе",
-                Location = new Point(20, 292),
-                Size = new Size(520, 24),
-                ForeColor = Theme.Text,
-                BackColor = Color.Transparent,
-                FlatStyle = FlatStyle.Flat
+                Location = new Point(20, 286),
+                Size = new Size(560, 26)
             };
-
-            var lblRepo = Theme.CreateLabel("GitHub-репозиторий для обновлений (owner/repo)", true, 9f, false);
-            lblRepo.Location = new Point(20, 330);
-            _txtRepo = new TextBox { Location = new Point(20, 352), Size = new Size(620, 26) };
-            Theme.StyleTextBox(_txtRepo);
-
-            _chkUpdates = new CheckBox
+            _chkUpdates = new DarkCheckBox
             {
                 Text = "Проверять обновления автоматически при запуске",
-                Location = new Point(20, 392),
-                Size = new Size(520, 24),
-                ForeColor = Theme.Text,
-                BackColor = Color.Transparent,
-                FlatStyle = FlatStyle.Flat
+                Location = new Point(20, 316),
+                Size = new Size(560, 26)
             };
+            _chkEpg = new DarkCheckBox
+            {
+                Text = "Загружать телепрограмму (EPG)",
+                Location = new Point(20, 346),
+                Size = new Size(560, 26)
+            };
+            _chkLight = new DarkCheckBox
+            {
+                Text = "Светлая тема оформления",
+                Location = new Point(20, 376),
+                Size = new Size(560, 26)
+            };
+
+            _btnCheckUpdates = Theme.CreateButton("Проверить обновления", false);
+            _btnCheckUpdates.Location = new Point(20, 442);
+            _btnCheckUpdates.Size = new Size(190, 36);
+            _btnCheckUpdates.Click += (s, e) =>
+            {
+                if (_checkUpdates != null)
+                    _checkUpdates();
+            };
+
+            var lblVersion = Theme.CreateLabel("Версия " + UpdateChecker.CurrentVersion, true, 8.5f, false);
+            lblVersion.Location = new Point(20, 414);
 
             _btnOk = Theme.CreateButton("Сохранить", true);
             _btnOk.DialogResult = DialogResult.OK;
-            _btnOk.Location = new Point(440, 478);
+            _btnOk.Location = new Point(440, 442);
             _btnOk.Size = new Size(110, 36);
 
             _btnCancel = Theme.CreateButton("Отмена", false);
             _btnCancel.DialogResult = DialogResult.Cancel;
-            _btnCancel.Location = new Point(558, 478);
+            _btnCancel.Location = new Point(558, 442);
             _btnCancel.Size = new Size(90, 36);
 
             this.Controls.Add(lblSource);
@@ -111,9 +124,11 @@ namespace IPTVViewer
             this.Controls.Add(_txtUrl2);
             this.Controls.Add(_chkAutoLoad);
             this.Controls.Add(_chkExternal);
-            this.Controls.Add(lblRepo);
-            this.Controls.Add(_txtRepo);
             this.Controls.Add(_chkUpdates);
+            this.Controls.Add(_chkEpg);
+            this.Controls.Add(_chkLight);
+            this.Controls.Add(lblVersion);
+            this.Controls.Add(_btnCheckUpdates);
             this.Controls.Add(_btnOk);
             this.Controls.Add(_btnCancel);
 
@@ -133,8 +148,9 @@ namespace IPTVViewer
             }
             _chkAutoLoad.Checked = _settings.AutoLoad;
             _chkExternal.Checked = _settings.UseExternalPlayer;
-            _txtRepo.Text = UpdateChecker.NormalizeRepo(_settings.UpdateRepo);
             _chkUpdates.Checked = _settings.CheckUpdatesOnStartup;
+            _chkEpg.Checked = _settings.EpgEnabled;
+            _chkLight.Checked = _settings.LightTheme;
         }
 
         private static int ClampIndex(int value, int count)
@@ -158,8 +174,9 @@ namespace IPTVViewer
                 _settings.SourceUrls = urls;
                 _settings.AutoLoad = _chkAutoLoad.Checked;
                 _settings.UseExternalPlayer = _chkExternal.Checked;
-                _settings.UpdateRepo = UpdateChecker.NormalizeRepo(_txtRepo.Text);
                 _settings.CheckUpdatesOnStartup = _chkUpdates.Checked;
+                _settings.EpgEnabled = _chkEpg.Checked;
+                _settings.LightTheme = _chkLight.Checked;
                 SettingsManager.Save(_settings);
             }
         }

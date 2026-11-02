@@ -21,7 +21,7 @@ namespace IPTVViewer
 
             _lblVersion = new Label
             {
-                Text = "v2.0  ·  VLC engine",
+                Text = "v" + UpdateChecker.CurrentVersion + "  ·  VLC engine",
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Theme.TextDim,
                 BackColor = Color.Transparent,

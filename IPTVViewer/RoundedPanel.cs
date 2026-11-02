@@ -9,11 +9,15 @@ namespace IPTVViewer
     {
         public int Radius { get; set; }
         public Color FillColor { get; set; }
+        public Color BorderColor { get; set; }
+        public float BorderWidth { get; set; }
 
         public RoundedPanel()
         {
             Radius = 12;
             FillColor = Color.White;
+            BorderColor = Color.Transparent;
+            BorderWidth = 1f;
             DoubleBuffered = true;
             ResizeRedraw = true;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
@@ -36,8 +40,15 @@ namespace IPTVViewer
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (var path = Round(ClientRectangle, Radius))
-            using (var b = new SolidBrush(FillColor))
-                e.Graphics.FillPath(b, path);
+            {
+                using (var b = new SolidBrush(FillColor))
+                    e.Graphics.FillPath(b, path);
+                if (BorderColor.A > 0 && BorderWidth > 0)
+                {
+                    using (var pen = new Pen(BorderColor, BorderWidth))
+                        e.Graphics.DrawPath(pen, path);
+                }
+            }
         }
 
         public static GraphicsPath Round(Rectangle r, int radius)

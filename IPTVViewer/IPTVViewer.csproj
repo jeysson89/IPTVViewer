@@ -11,8 +11,9 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Product>IPTV Viewer</Product>
     <AssemblyTitle>IPTV Viewer</AssemblyTitle>
-    <Version>2.1.0</Version>
+    <Version>0.0.1</Version>
     <Deterministic>true</Deterministic>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
