@@ -22,6 +22,7 @@ namespace IPTVViewer
             _epg = epg;
 
             this.Text = "Телепрограмма — " + (channel != null ? channel.Name : "");
+            this.Icon = AppIcon.Get();
             this.Size = new Size(660, 660);
             this.MinimumSize = new Size(520, 420);
             this.StartPosition = FormStartPosition.CenterParent;

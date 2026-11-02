@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
@@ -11,7 +11,8 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Product>IPTV Viewer</Product>
     <AssemblyTitle>IPTV Viewer</AssemblyTitle>
-    <Version>0.0.2</Version>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <Version>0.0.3</Version>
     <Deterministic>true</Deterministic>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
@@ -32,10 +33,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\app.ico" LogicalName="IPTVViewer.app.ico" />
     <EmbeddedResource Include="Resources\logo.png" Condition="Exists('Resources\logo.png')" />
   </ItemGroup>
 
-  <!-- Единый exe: VLC упаковывается внутрь и распаковывается при первом запуске. -->
+  <!-- Р•РґРёРЅС‹Р№ exe: VLC СѓРїР°РєРѕРІС‹РІР°РµС‚СЃСЏ РІРЅСѓС‚СЂСЊ Рё СЂР°СЃРїР°РєРѕРІС‹РІР°РµС‚СЃСЏ РїСЂРё РїРµСЂРІРѕРј Р·Р°РїСѓСЃРєРµ. -->
   <ItemGroup Condition="Exists('vlc-data\vlc-x64.zip') And Exists('vlc-data\vlc-x86.zip')">
     <EmbeddedResource Include="vlc-data\vlc-x64.zip" LogicalName="IPTVViewer.vlc-x64.zip" />
     <EmbeddedResource Include="vlc-data\vlc-x86.zip" LogicalName="IPTVViewer.vlc-x86.zip" />
@@ -46,7 +48,7 @@
     <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
 
-  <!-- Единый exe: управляемые зависимости встроены и загружаются из памяти. -->
+  <!-- Р•РґРёРЅС‹Р№ exe: СѓРїСЂР°РІР»СЏРµРјС‹Рµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РІСЃС‚СЂРѕРµРЅС‹ Рё Р·Р°РіСЂСѓР¶Р°СЋС‚СЃСЏ РёР· РїР°РјСЏС‚Рё. -->
   <ItemGroup>
     <ManagedDep Include="LibVLCSharp" DepDir="libvlcsharp\3.9.4\lib\net471" />
     <ManagedDep Include="LibVLCSharp.WinForms" DepDir="libvlcsharp.winforms\3.9.4\lib\net40" />

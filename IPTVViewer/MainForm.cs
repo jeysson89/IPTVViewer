@@ -89,6 +89,7 @@ namespace IPTVViewer
             catch { }
 
             this.Text = "IPTV Viewer — NEWLINE network";
+            this.Icon = AppIcon.Get();
             this.StartPosition = FormStartPosition.Manual;
             this.Location = new Point(_settings.WindowX, _settings.WindowY);
             this.ClientSize = new Size(_settings.WindowW, _settings.WindowH);

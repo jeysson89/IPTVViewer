@@ -32,6 +32,7 @@ namespace IPTVViewer
         private void InitializeComponent()
         {
             this.Text = "Настройки";
+            this.Icon = AppIcon.Get();
             this.Size = new Size(680, 552);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;

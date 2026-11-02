@@ -102,6 +102,7 @@ IPTVViewer.exe --check-updates
 | `EpgForm.cs` | Окно телепрограммы канала |
 | `VlcLocator.cs` | Поиск/распаковка движка VLC (единый exe) |
 | `DepsLoader.cs` | Загрузка LibVLCSharp из ресурсов (единый exe) |
+| `AppIcon.cs` / `Resources\app.ico` | Иконка NL для exe и всех окон |
 | `pack_vlc.ps1` | Упаковка VLC в vlc-data для встраивания |
 | `UpdateChecker.cs` | Запрос релизов GitHub и сравнение версий |
 | `UpdateForm.cs` | Окно обновления и загрузка архива |

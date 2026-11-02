@@ -40,6 +40,7 @@ namespace IPTVViewer
         private void InitializeComponent()
         {
             this.Text = "IPTV Viewer";
+            this.Icon = AppIcon.Get();
             this.Size = new Size(660, 380);
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterScreen;
