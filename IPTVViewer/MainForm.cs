@@ -26,6 +26,16 @@ namespace IPTVViewer
                     }
                 }
                 catch { }
+                try
+                {
+                    if (_volumeBadgeTimer != null)
+                    {
+                        _volumeBadgeTimer.Stop();
+                        _volumeBadgeTimer.Dispose();
+                        _volumeBadgeTimer = null;
+                    }
+                }
+                catch { }
             }
             base.Dispose(disposing);
         }
@@ -84,6 +94,8 @@ namespace IPTVViewer
         private int _idleTicks;
         private Timer _epgTimer;
         private LowLevelMouseHook _mouseHook;
+        private Label _volumeBadge;
+        private Timer _volumeBadgeTimer;
         private bool _autoPlayOnLoad;
 
         public MainForm()
@@ -122,6 +134,98 @@ namespace IPTVViewer
                     }
                     catch { }
                 }));
+                _mouseHook.WheelHandler = OnMouseWheelHook;
+            }
+            catch { }
+        }
+
+        /// <summary>Колесо мыши: над видео меняем громкость, иначе пропускаем событие.</summary>
+        private bool OnMouseWheelHook(Point pt, int delta)
+        {
+            try
+            {
+                // реагируем только когда наше окно активно — не глотаем чужую прокрутку
+                if (Form.ActiveForm != this) return false;
+                if (_videoView == null || !_videoView.Visible) return false;
+
+                var playArea = _videoView.RectangleToScreen(
+                    new Rectangle(0, 0, _videoView.Width, _videoView.Height));
+                if (!_fullscreen && !playArea.Contains(pt)) return false;
+                if (_fullscreen && !this.RectangleToScreen(this.ClientRectangle).Contains(pt)) return false;
+
+                int step = 5; // один щелчок колеса = 5 %
+                int amount = Math.Sign(delta) * step; // прокрутка «от себя» (+120) — громче
+                this.BeginInvoke(new Action(() => ChangeVolume(amount)));
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void ChangeVolume(int delta)
+        {
+            try
+            {
+                int current = _mediaPlayer != null ? _mediaPlayer.Volume : _volume.Value;
+                int v = Math.Max(0, Math.Min(100, current + delta));
+                if (_mediaPlayer != null && _mediaPlayer.Volume != v)
+                    _mediaPlayer.Volume = v;
+                if (_volume.Value != v)
+                    _volume.Value = v;
+                ShowVolumeBadge(v);
+                SetStatus("Громкость: " + v + " %");
+            }
+            catch { }
+        }
+
+        private void ShowVolumeBadge(int percent)
+        {
+            try
+            {
+                if (_volumeBadge == null)
+                {
+                    _volumeBadge = new Label
+                    {
+                        Size = new Size(150, 44),
+                        TextAlign = ContentAlignment.MiddleCenter,
+                        Font = Theme.FontBold,
+                        BackColor = Theme.PanelAlt,
+                        ForeColor = Theme.AccentHover,
+                        BorderStyle = BorderStyle.None,
+                        Visible = false
+                    };
+                    this.Controls.Add(_volumeBadge);
+                }
+
+                _volumeBadge.Text = "Громкость " + percent + " %";
+
+                // показываем по центру сверху над областью видео
+                var r = _videoView.RectangleToScreen(
+                    new Rectangle(0, 0, _videoView.Width, _videoView.Height));
+                var local = this.PointToClient(new Point(
+                    r.Left + (r.Width - _volumeBadge.Width) / 2,
+                    r.Top + 24));
+                _volumeBadge.Location = local;
+                _volumeBadge.Visible = true;
+                _volumeBadge.BringToFront();
+
+                if (_volumeBadgeTimer == null)
+                {
+                    _volumeBadgeTimer = new Timer { Interval = 1200 };
+                    _volumeBadgeTimer.Tick += (s, e) =>
+                    {
+                        try
+                        {
+                            _volumeBadgeTimer.Stop();
+                            _volumeBadge.Visible = false;
+                        }
+                        catch { }
+                    };
+                }
+                _volumeBadgeTimer.Stop();
+                _volumeBadgeTimer.Start();
             }
             catch { }
         }
@@ -297,7 +401,11 @@ namespace IPTVViewer
                 BackColor = Theme.Panel,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            _volume.Scroll += (s, e) => { if (_mediaPlayer != null) _mediaPlayer.Volume = _volume.Value; };
+            _volume.Scroll += (s, e) =>
+            {
+                if (_mediaPlayer != null) _mediaPlayer.Volume = _volume.Value;
+                ShowVolumeBadge(_volume.Value);
+            };
 
             var tips = new ToolTip();
             tips.SetToolTip(_btnFullscreen, "Полный экран (F11), выход — Esc");

@@ -13,9 +13,16 @@ namespace IPTVViewer
     {
         public event Action<System.Drawing.Point> LeftDoubleClicked;
 
+        /// <summary>
+        /// Вызывается при прокрутке колеса; обработчик решает — обработать
+        /// прокрутку сам (true, событие "глотается") или пропустить дальше.
+        /// </summary>
+        public Func<System.Drawing.Point, int, bool> WheelHandler;
+
         private const int WH_MOUSE_LL = 14;
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_LBUTTONUP = 0x0202;
+        private const int WM_MOUSEWHEEL = 0x020A;
 
         private delegate IntPtr MouseProc(int code, IntPtr wParam, IntPtr lParam);
 
@@ -55,6 +62,18 @@ namespace IPTVViewer
 
         private IntPtr OnMouse(int code, IntPtr wParam, IntPtr lParam)
         {
+            if (code >= 0 && (int)wParam == WM_MOUSEWHEEL)
+            {
+                var info = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+                var pt = new System.Drawing.Point(info.Pt.X, info.Pt.Y);
+                // угол прокрутки лежит в старшем слове MouseData
+                int delta = unchecked((short)((info.MouseData >> 16) & 0xFFFF));
+                var handler = WheelHandler;
+                if (handler != null && handler(pt, delta))
+                    return (IntPtr)1; // прокрутка обработана — не пускаем дальше
+                return CallNextHookEx(_hook, code, wParam, lParam);
+            }
+
             if (code >= 0 && (int)wParam == WM_LBUTTONDOWN)
             {
                 var info = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
