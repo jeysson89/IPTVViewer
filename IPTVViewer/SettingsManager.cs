@@ -20,6 +20,7 @@ namespace IPTVViewer
         public bool LightTheme { get; set; } = false;
         public bool EpgEnabled { get; set; } = true;
         public string EpgUrl { get; set; } = "";
+        public string LastChannelUrl { get; set; } = "";
         public int WindowX { get; set; } = 100;
         public int WindowY { get; set; } = 100;
         public int WindowW { get; set; } = 1050;

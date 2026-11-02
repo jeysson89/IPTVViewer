@@ -13,6 +13,22 @@ namespace IPTVViewer
 {
     public partial class MainForm : Form
     {
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                try
+                {
+                    if (_mouseHook != null)
+                    {
+                        _mouseHook.Dispose();
+                        _mouseHook = null;
+                    }
+                }
+                catch { }
+            }
+            base.Dispose(disposing);
+        }
         private const string SearchPlaceholder = "Поиск канала…";
         private const int ChannelPanelWidth = 360;
 
@@ -66,6 +82,8 @@ namespace IPTVViewer
         private Point _lastCursor;
         private int _idleTicks;
         private Timer _epgTimer;
+        private LowLevelMouseHook _mouseHook;
+        private bool _autoPlayOnLoad;
 
         public MainForm()
         {
@@ -77,7 +95,34 @@ namespace IPTVViewer
             BuildUi();
             ApplySettings();
             if (_settings.AutoLoad)
+            {
+                _autoPlayOnLoad = true;
                 LoadSelectedSource();
+            }
+
+            InstallMouseHook();
+        }
+
+        private void InstallMouseHook()
+        {
+            try
+            {
+                if (_mouseHook != null) return;
+                _mouseHook = new LowLevelMouseHook();
+                _mouseHook.LeftDoubleClicked += pt => this.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        if (_videoView == null || !_videoView.Visible) return;
+                        var playArea = _videoView.RectangleToScreen(
+                            new Rectangle(0, 0, _videoView.Width, _videoView.Height));
+                        if (_fullscreen ? true : playArea.Contains(pt))
+                            ToggleFullscreen();
+                    }
+                    catch { }
+                }));
+            }
+            catch { }
         }
 
         private void InitializeComponent()
@@ -121,16 +166,16 @@ namespace IPTVViewer
         private void BuildUi()
         {
             // ===== Верхняя панель =====
-            _topPanel = new Panel { Dock = DockStyle.Top, Height = 120, BackColor = Theme.Panel };
+            _topPanel = new Panel { Dock = DockStyle.Top, Height = 68, BackColor = Theme.Panel };
 
             var badge = new RoundedPanel
             {
-                Location = new Point(16, 14),
-                Size = new Size(176, 58),
-                Radius = 10,
+                Location = new Point(12, 12),
+                Size = new Size(132, 44),
+                Radius = 8,
                 FillColor = Color.White,
                 BorderColor = Theme.Border,
-                Padding = new Padding(10, 8, 10, 8)
+                Padding = new Padding(8, 6, 8, 6)
             };
             var logo = LoadLogo();
             if (logo != null)
@@ -146,33 +191,34 @@ namespace IPTVViewer
             }
             _topPanel.Controls.Add(badge);
 
-            var title = Theme.CreateLabel("IPTV Newline", false, 17f, true);
-            title.Location = new Point(208, 16);
+            var title = Theme.CreateLabel("IPTV Newline", false, 15f, true);
+            title.Location = new Point(156, 22);
             _topPanel.Controls.Add(title);
 
             _btnSettings = Theme.CreateButton("Настройки", false);
-            _btnSettings.Size = new Size(110, 34);
+            _btnSettings.Size = new Size(110, 30);
             _btnSettings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnSettings.Click += (s, e) => OpenSettings();
             _topPanel.Controls.Add(_btnSettings);
 
             Action layoutTopButtons = () =>
             {
-                _btnSettings.Left = _topPanel.Width - _btnSettings.Width - 16;
+                _btnSettings.Left = _topPanel.Width - _btnSettings.Width - 14;
+                _btnSettings.Top = (_topPanel.Height - _btnSettings.Height) / 2;
             };
             _topPanel.Resize += (s, e) => layoutTopButtons();
             layoutTopButtons();
 
             var lblSource = Theme.CreateLabel("Источник:", true, 9.5f, false);
-            lblSource.Location = new Point(18, 87);
+            lblSource.Location = new Point(300, 26);
             _topPanel.Controls.Add(lblSource);
 
             _btnSourcePortal = CreateSourceButton("IPTVPORTAL", 0);
-            _btnSourcePortal.Location = new Point(94, 80);
+            _btnSourcePortal.Location = new Point(376, 19);
             _topPanel.Controls.Add(_btnSourcePortal);
 
             _btnSourceIsp = CreateSourceButton("M3U", 1);
-            _btnSourceIsp.Location = new Point(244, 80);
+            _btnSourceIsp.Location = new Point(526, 19);
             _topPanel.Controls.Add(_btnSourceIsp);
 
             var sourceTips = new ToolTip();
@@ -202,16 +248,16 @@ namespace IPTVViewer
             _videoWrap = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black, Padding = new Padding(0) };
             if (_mediaPlayer != null)
             {
+                // двойной клик по видео ловится глобальным хуком (InstallMouseHook),
+                // окно libvlc перекрывает View и не пропускает клики к WinForms
                 _videoView = new VideoView
                 {
                     Dock = DockStyle.Fill,
                     MediaPlayer = _mediaPlayer,
                     BackColor = Color.Black
                 };
-                _videoView.DoubleClick += (s, e) => ToggleFullscreen();
                 _videoWrap.Controls.Add(_videoView);
             }
-            _videoWrap.DoubleClick += (s, e) => ToggleFullscreen();
             videoHost.Controls.Add(_videoWrap, 0, 0);
 
             _controlsPanel = new Panel
@@ -842,6 +888,43 @@ namespace IPTVViewer
 
             if (_settings.EpgEnabled && !string.IsNullOrWhiteSpace(_epgUrl) && _allChannels.Count > 0)
                 LoadEpgAsync(_epgUrl, _allChannels);
+
+            // Автовоспроизведение: последний просмотренный канал, иначе первый
+            if (_autoPlayOnLoad && _allChannels.Count > 0)
+            {
+                _autoPlayOnLoad = false;
+                try
+                {
+                    var wanted = _settings.LastChannelUrl;
+                    if (!string.IsNullOrWhiteSpace(wanted))
+                    {
+                        foreach (var ch in _allChannels)
+                        {
+                            if (ch != null && ch.Url == wanted)
+                            {
+                                AutoSelectAndPlay(ch);
+                                return;
+                            }
+                        }
+                    }
+                    AutoSelectAndPlay(_allChannels[0]);
+                }
+                catch { }
+            }
+        }
+
+        private void AutoSelectAndPlay(Channel channel)
+        {
+            if (channel == null) return;
+            for (int i = 0; i < _lbChannels.Items.Count; i++)
+            {
+                if (_lbChannels.Items[i] == channel)
+                {
+                    _lbChannels.SelectedIndex = i;
+                    break;
+                }
+            }
+            PlaySelected();
         }
 
         private void LoadEpgAsync(string epgUrl, List<Channel> channels)
@@ -885,6 +968,13 @@ namespace IPTVViewer
             {
                 SetStatus("Выберите канал в списке");
                 return;
+            }
+
+            // запоминаем последний просмотренный канал (для автовоспроизведения)
+            if (!string.IsNullOrWhiteSpace(ch.Url) && _settings.LastChannelUrl != ch.Url)
+            {
+                _settings.LastChannelUrl = ch.Url;
+                SettingsManager.Save(_settings);
             }
 
             if (_settings.UseExternalPlayer)
