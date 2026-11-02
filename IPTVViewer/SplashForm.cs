@@ -23,11 +23,11 @@ namespace IPTVViewer
             {
                 Text = "v" + UpdateChecker.CurrentVersion,
                 Font = new Font("Segoe UI", 9f),
-                ForeColor = Theme.TextDim,
-                BackColor = Color.Transparent,
+                ForeColor = Color.FromArgb(130, 0, 0, 0),
+                BackColor = Color.White, // на самой карточке
                 TextAlign = ContentAlignment.MiddleCenter,
                 Dock = DockStyle.Bottom,
-                Height = 30
+                Height = 26
             };
             this.Controls.Add(_lblVersion);
 
@@ -41,10 +41,10 @@ namespace IPTVViewer
         {
             this.Text = "IPTV Newline";
             this.Icon = AppIcon.Get();
-            this.Size = new Size(660, 380);
+            this.ClientSize = new Size(540, 236);
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = Theme.Bg;
+            this.BackColor = Color.White; // фон окна — сама карточка, лишнего нет
             this.DoubleBuffered = true;
             this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
         }
@@ -82,23 +82,24 @@ namespace IPTVViewer
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.AntiAlias;
 
-            // Внешняя тонкая рамка
-            using (var pen = new Pen(Theme.Border, 1))
-                g.DrawRectangle(pen, 0, 0, this.Width - 1, this.Height - 1);
+            // окно = сама карточка со скруглёнными углами, фона вокруг нет
+            using (var path = RoundedPanel.Round(new Rectangle(0, 0, this.Width, this.Height), 18))
+                this.Region = new Region(path);
 
-            int logoW = Math.Min(540, this.Width - 70);
-            int logoH = (int)(logoW * 640f / 1920f);
-            var logoRect = new Rectangle((this.Width - logoW) / 2, (this.Height - logoH) / 2 - 12, logoW, logoH);
+            // тонкий контур по краю карточки
+            using (var pen = new Pen(Color.FromArgb(45, 0, 0, 0), 1))
+                g.DrawRectangle(pen, 0, 0, this.Width - 1, this.Height - 1);
 
             if (_logo != null)
             {
-                // логотип рисуем прямо на фоне — без белой подложки и рамки
-                g.DrawImage(_logo, logoRect);
-            }
+                int logoW = this.Width - 40;
+                int logoH = (int)(logoW * 640f / 1920f);
+                g.DrawImage(_logo, (this.Width - logoW) / 2, 14, logoW, logoH);
 
-            // Акцентная линия под логотип
-            using (var accent = new SolidBrush(Theme.Accent))
-                g.FillRectangle(accent, this.Width / 2 - 40, logoRect.Bottom + 22, 80, 3);
+                // Акцентная линия под логотипом — внутри карточки
+                using (var accent = new SolidBrush(Theme.Accent))
+                    g.FillRectangle(accent, this.Width / 2 - 40, 14 + logoH + 16, 80, 3);
+            }
         }
 
         protected override void Dispose(bool disposing)
