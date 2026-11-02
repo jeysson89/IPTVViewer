@@ -139,13 +139,20 @@ namespace IPTVViewer
             if (asset != null && !string.IsNullOrEmpty(asset.DownloadUrl))
             {
                 var size = UpdateChecker.FormatSize(asset.Size);
-                _lblAsset.Text = "Файл: " + asset.Name + (string.IsNullOrEmpty(size) ? "" : "  ·  " + size);
+                var kind = IsExeAsset(asset) ? "однофайловая версия, установка в один клик" : "архив, установка вручную";
+                _lblAsset.Text = "Файл: " + asset.Name + (string.IsNullOrEmpty(size) ? "" : "  ·  " + size) + "  ·  " + kind;
             }
             else
             {
-                _lblAsset.Text = "Готовый архив в релизе не найден — откройте страницу GitHub.";
+                _lblAsset.Text = "Готовый файл обновления в релизе не найден — откройте страницу GitHub.";
                 _btnDownload.Enabled = false;
             }
+        }
+
+        private static bool IsExeAsset(ReleaseAsset asset)
+        {
+            return asset != null && !string.IsNullOrEmpty(asset.Name) &&
+                   asset.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
         }
 
         private void OpenReleasePage()
@@ -189,6 +196,7 @@ namespace IPTVViewer
             _downloading = true;
             _btnDownload.Enabled = false;
             _btnOpen.Enabled = false;
+            _progress.Style = ProgressBarStyle.Blocks;
             _progress.Visible = true;
             _lblProgress.Visible = true;
             _progress.Value = 0;
@@ -234,15 +242,98 @@ namespace IPTVViewer
                 return;
             }
 
-            var answer = MessageBox.Show(this,
-                "Обновление скачано:\n" + target +
-                "\n\nОткрыть папку с файлом?",
-                "Готово", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-
-            if (answer == DialogResult.Yes)
+            if (IsExeAsset(_info.PreferredAsset))
             {
-                try { Process.Start("explorer.exe", "/select,\"" + target + "\""); }
-                catch { }
+                // однофайловая версия: предлагаем сразу установить
+                var answer = MessageBox.Show(this,
+                    "Обновление скачано (версия " + (_info.LatestVersion ?? "") + ").\n\n" +
+                    "Установить сейчас? Приложение будет заменено новой версией и перезапущено.",
+                    "Установка обновления", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                if (answer == DialogResult.Yes)
+                    InstallAndUpdate(target);
+                else
+                    SetStatusDownloaded();
+            }
+            else
+            {
+                // запасной вариант (zip): просто показываем файл
+                var answer = MessageBox.Show(this,
+                    "Обновление скачано:\n" + target +
+                    "\n\nОткрыть папку с файлом?",
+                    "Готово", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+
+                if (answer == DialogResult.Yes)
+                {
+                    try { Process.Start("explorer.exe", "/select,\"" + target + "\""); }
+                    catch { }
+                }
+            }
+        }
+
+        private void SetStatusDownloaded()
+        {
+            try
+            {
+                _lblAsset.Text = "Файл скачан. Установить можно позже, нажав «Скачать обновление».";
+            }
+            catch { }
+        }
+
+        private void InstallAndUpdate(string newExePath)
+        {
+            string currentExe;
+            try
+            {
+                currentExe = Process.GetCurrentProcess().MainModule.FileName;
+            }
+            catch
+            {
+                currentExe = System.Reflection.Assembly.GetEntryAssembly().Location;
+            }
+
+            if (string.IsNullOrEmpty(currentExe) ||
+                string.Equals(Path.GetFullPath(currentExe), Path.GetFullPath(newExePath),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this, "Не удалось определить путь к приложению.",
+                    "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            _btnDownload.Enabled = false;
+            _btnOpen.Enabled = false;
+            _lblAsset.Text = "Установка: замена приложения...";
+            _progress.Style = ProgressBarStyle.Marquee;
+            _progress.Visible = true;
+
+            try
+            {
+                // Windows разрешает переименование работающего exe —
+                // освобождаем имя файла и копируем на него новую версию.
+                var oldPath = currentExe + ".old";
+                try { if (File.Exists(oldPath)) File.Delete(oldPath); } catch { }
+                File.Move(currentExe, oldPath);
+                File.Copy(newExePath, currentExe, true);
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = currentExe,
+                    WorkingDirectory = Path.GetDirectoryName(currentExe)
+                });
+
+                // завершаем текущее приложение: новая версия уже запущена
+                this.Close();
+                Application.Exit();
+            }
+            catch (Exception ex)
+            {
+                ResetDownloadState();
+                try { _progress.Visible = false; } catch { }
+                MessageBox.Show(this,
+                    "Не удалось установить обновление:\n" + ex.Message +
+                    "\n\nНовый файл лежит здесь:\n" + newExePath,
+                    "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -263,19 +354,29 @@ namespace IPTVViewer
         private static string BuildTargetPath(ReleaseAsset asset)
         {
             var name = string.IsNullOrWhiteSpace(asset.Name)
-                ? "IPTVViewer-update.zip"
+                ? "IPTVViewer-update.exe"
                 : Path.GetFileName(asset.Name);
             foreach (var c in Path.GetInvalidFileNameChars())
                 name = name.Replace(c, '_');
 
-            var dir = GetDownloadDirectory();
+            // исполнительный файл качаем во внутреннюю папку, откуда
+            // InstallAndUpdate перезапишет текущее приложение;
+            // резервный архив — в обычную папку загрузок
+            var dir = IsExeAsset(asset)
+                ? Path.Combine(SettingsManager.DataDir, "updates")
+                : GetDownloadDirectory();
             Directory.CreateDirectory(dir);
 
             var path = Path.Combine(dir, name);
-            if (File.Exists(path))
+            if (!IsExeAsset(asset) && File.Exists(path))
             {
                 var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 path = Path.Combine(dir, Path.GetFileNameWithoutExtension(name) + "-" + stamp + Path.GetExtension(name));
+            }
+            else if (File.Exists(path))
+            {
+                // повторно качаем exe — перезаписываем поверх
+                try { File.Delete(path); } catch { }
             }
             return path;
         }

@@ -1158,12 +1158,24 @@ namespace IPTVViewer
 
             var repo = _settings.UpdateRepo;
 
+            // служебный ключ --current X.Y.Z позволяет проверить поток
+            // обновления, притворившись более старой версией
+            string versionOverride = null;
+            var cliArgs = Environment.GetCommandLineArgs();
+            for (int i = 0; i < cliArgs.Length - 1; i++)
+            {
+                if (string.Equals(cliArgs[i], "--current", StringComparison.OrdinalIgnoreCase))
+                    versionOverride = cliArgs[i + 1];
+            }
+
             Task.Run(() =>
             {
                 UpdateInfo info;
                 try
                 {
-                    info = UpdateChecker.Check(repo);
+                    info = versionOverride != null
+                        ? UpdateChecker.Check(repo, versionOverride)
+                        : UpdateChecker.Check(repo);
                 }
                 catch (Exception ex)
                 {

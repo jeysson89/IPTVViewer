@@ -32,7 +32,10 @@ namespace IPTVViewer
             Assets = new List<ReleaseAsset>();
         }
 
-        /// <summary>Архив релиза (zip) или первый файл, если архива нет.</summary>
+        /// <summary>
+        /// Однофайловый exe приложения — им и обновляем установленную версию.
+        /// Если exe в релизе нет, берём первый попавшийся asset.
+        /// </summary>
         public ReleaseAsset PreferredAsset
         {
             get
@@ -41,7 +44,7 @@ namespace IPTVViewer
                 foreach (var a in Assets)
                 {
                     if (!string.IsNullOrEmpty(a.Name) &&
-                        a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                        a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                         return a;
                 }
                 return Assets[0];

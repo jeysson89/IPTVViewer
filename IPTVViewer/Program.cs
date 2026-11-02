@@ -30,6 +30,8 @@ namespace IPTVViewer
                 return;
             }
 
+            CleanupOldExecutable();
+
             try
             {
                 var startupSettings = SettingsManager.Load();
@@ -54,6 +56,32 @@ namespace IPTVViewer
                 MessageBox.Show("Критическая ошибка:\n" + ex.Message + "\n\nЛог: " + LogPath,
                     "IPTV Newline", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        /// <summary>
+        /// После самообновления работающий exe переименовывается в *.old —
+        /// удаляем файл-остаток, когда старый процесс с ним закончит.
+        /// </summary>
+        private static void CleanupOldExecutable()
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                // старый процесс может завершаться дольше минуты — пробуем до 5 минут
+                for (int i = 0; i < 150; i++)
+                {
+                    try
+                    {
+                        var old = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName + ".old";
+                        if (!File.Exists(old)) return;
+                        File.Delete(old);
+                        return;
+                    }
+                    catch
+                    {
+                        System.Threading.Thread.Sleep(2000);
+                    }
+                }
+            });
         }
 
         private static void RunEpgTest()
