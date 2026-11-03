@@ -1,10 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net48</TargetFramework>
+    <!--
+      Самодостаточная сборка (win-x86): рантайм .NET вшит в exe, программа
+      запускается на любом Windows от 7 SP1 (32- и 64-бит) БЕЗ установки
+      NET Framework или чего-либо ещё. x86 работает и на 64-битных системах.
+    -->
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>IPTVViewer</RootNamespace>
     <AssemblyName>IPTVViewer</AssemblyName>
-    <LangVersion>7.3</LangVersion>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -12,24 +17,19 @@
     <Product>IPTV Newline</Product>
     <AssemblyTitle>IPTV Newline</AssemblyTitle>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-    <Version>0.0.10</Version>
+    <Version>0.0.11</Version>
     <Deterministic>true</Deterministic>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <RuntimeIdentifiers>win-x86;win-x64</RuntimeIdentifiers>
+    <LangVersion>7.3</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+    <PackageReference Include="LibVLCSharp" Version="3.9.4" />
     <PackageReference Include="LibVLCSharp.WinForms" Version="3.9.4" />
-    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Web.Extensions" />
+    <!-- Нативные файлы VLC не нужны в выводе: движок вшит в exe и
+         распаковывается в LocalAppData при первом запуске (VlcLocator). -->
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" ExcludeAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
@@ -37,28 +37,9 @@
     <EmbeddedResource Include="Resources\logo.png" Condition="Exists('Resources\logo.png')" />
   </ItemGroup>
 
-  <!-- Р•РґРёРЅС‹Р№ exe: VLC СѓРїР°РєРѕРІС‹РІР°РµС‚СЃСЏ РІРЅСѓС‚СЂСЊ Рё СЂР°СЃРїР°РєРѕРІС‹РІР°РµС‚СЃСЏ РїСЂРё РїРµСЂРІРѕРј Р·Р°РїСѓСЃРєРµ. -->
+  <!-- Движок VLC пакуется внутрь exe и распаковывается при первом запуске. -->
   <ItemGroup Condition="Exists('vlc-data\vlc-x64.zip') And Exists('vlc-data\vlc-x86.zip')">
     <EmbeddedResource Include="vlc-data\vlc-x64.zip" LogicalName="IPTVViewer.vlc-x64.zip" />
     <EmbeddedResource Include="vlc-data\vlc-x86.zip" LogicalName="IPTVViewer.vlc-x86.zip" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="System.IO.Compression" />
-    <Reference Include="System.IO.Compression.FileSystem" />
-  </ItemGroup>
-
-  <!-- Р•РґРёРЅС‹Р№ exe: СѓРїСЂР°РІР»СЏРµРјС‹Рµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РІСЃС‚СЂРѕРµРЅС‹ Рё Р·Р°РіСЂСѓР¶Р°СЋС‚СЃСЏ РёР· РїР°РјСЏС‚Рё. -->
-  <ItemGroup>
-    <ManagedDep Include="LibVLCSharp" DepDir="libvlcsharp\3.9.4\lib\net471" />
-    <ManagedDep Include="LibVLCSharp.WinForms" DepDir="libvlcsharp.winforms\3.9.4\lib\net40" />
-    <ManagedDep Include="System.Buffers" DepDir="system.buffers\4.6.0\lib\net462" />
-    <ManagedDep Include="System.Memory" DepDir="system.memory\4.6.0\lib\net462" />
-    <ManagedDep Include="System.Numerics.Vectors" DepDir="system.numerics.vectors\4.6.0\lib\net462" />
-    <ManagedDep Include="System.Runtime.CompilerServices.Unsafe" DepDir="system.runtime.compilerservices.unsafe\6.1.0\lib\net462" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="@(ManagedDep->'$(USERPROFILE)\.nuget\packages\%(DepDir)\%(Identity).dll')"
-                      LogicalName="IPTVViewer.deps.%(Filename).dll" />
   </ItemGroup>
 </Project>

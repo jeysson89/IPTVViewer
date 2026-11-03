@@ -31,3 +31,7 @@ Desktop.ini
 
 # Local logs
 *.log
+
+dist/
+publish/
+*.zip

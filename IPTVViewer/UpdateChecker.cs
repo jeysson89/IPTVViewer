@@ -4,7 +4,7 @@ using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Text;
-using System.Web.Script.Serialization;
+using System.Text.Json;
 
 namespace IPTVViewer
 {
@@ -165,10 +165,14 @@ namespace IPTVViewer
                     string message = null;
                     try
                     {
-                        var json = new JavaScriptSerializer();
-                        var obj = json.DeserializeObject(body) as Dictionary<string, object>;
-                        if (obj != null && obj.ContainsKey("message"))
-                            message = Convert.ToString(obj["message"]);
+                        using (var document = JsonDocument.Parse(body))
+                        {
+                            var root = document.RootElement;
+                            if (root.ValueKind == JsonValueKind.Object &&
+                                root.TryGetProperty("message", out var value) &&
+                                value.ValueKind == JsonValueKind.String)
+                                message = value.GetString();
+                        }
                     }
                     catch { }
 
@@ -176,8 +180,7 @@ namespace IPTVViewer
                         return "Обновления временно недоступны. Попробуйте позже.";
                     if (http.StatusCode == HttpStatusCode.Forbidden || (int)http.StatusCode == 429)
                         return "Сервер обновлений временно перегружен. Попробуйте позже." +
-                               (string.IsNullOrEmpty(message) ? "" : "\n" + message);
-                    return "Сервер обновлений вернул ошибку " + (int)http.StatusCode + " " + http.StatusDescription +
+                               (string.IsNullOrEmpty(message) ? "" : "\n" + message);                    return "Сервер обновлений вернул ошибку " + (int)http.StatusCode + " " + http.StatusDescription +
                            (string.IsNullOrEmpty(message) ? "" : "\n" + message);
                 }
                 catch { }
@@ -190,71 +193,86 @@ namespace IPTVViewer
 
         private static void ParseRelease(UpdateInfo result, string jsonText, string currentVersion)
         {
-            var json = new JavaScriptSerializer();
-            var obj = json.DeserializeObject(jsonText) as Dictionary<string, object>;
-            if (obj == null)
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(jsonText);
+            }
+            catch
             {
                 result.Error = "Сервер обновлений вернул некорректный ответ.";
                 return;
             }
 
-            result.TagName = GetString(obj, "tag_name");
-            result.ReleaseName = GetString(obj, "name");
-            result.ReleaseUrl = GetString(obj, "html_url");
-            result.Notes = GetString(obj, "body");
-            result.LatestVersion = CleanVersion(result.TagName);
-
-            if (string.IsNullOrEmpty(result.ReleaseUrl) && !string.IsNullOrEmpty(result.TagName))
+            using (document)
             {
-                // html_url всегда приходит, но подстрахуемся
-                result.ReleaseUrl = "https://github.com/" + NormalizeRepo(DefaultRepo) + "/releases/tag/" + result.TagName;
-            }
-
-            object assetsObj;
-            if (obj.TryGetValue("assets", out assetsObj))
-            {
-                var list = assetsObj as object[];
-                if (list != null)
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
                 {
-                    foreach (var item in list)
+                    result.Error = "Сервер обновлений вернул некорректный ответ.";
+                    return;
+                }
+
+                result.TagName = GetString(root, "tag_name");
+                result.ReleaseName = GetString(root, "name");
+                result.ReleaseUrl = GetString(root, "html_url");
+                result.Notes = GetString(root, "body");
+                result.LatestVersion = CleanVersion(result.TagName);
+
+                if (string.IsNullOrEmpty(result.ReleaseUrl) && !string.IsNullOrEmpty(result.TagName))
+                {
+                    // html_url всегда приходит, но подстрахуемся
+                    result.ReleaseUrl = "https://github.com/" + NormalizeRepo(DefaultRepo) + "/releases/tag/" + result.TagName;
+                }
+
+                if (root.TryGetProperty("assets", out var assets) &&
+                    assets.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in assets.EnumerateArray())
                     {
-                        var asset = item as Dictionary<string, object>;
-                        if (asset == null) continue;
+                        if (item.ValueKind != JsonValueKind.Object) continue;
                         result.Assets.Add(new ReleaseAsset
                         {
-                            Name = GetString(asset, "name"),
-                            DownloadUrl = GetString(asset, "browser_download_url"),
-                            Size = GetLong(asset, "size")
+                            Name = GetString(item, "name"),
+                            DownloadUrl = GetString(item, "browser_download_url"),
+                            Size = GetLong(item, "size")
                         });
                     }
                 }
-            }
 
-            if (string.IsNullOrEmpty(result.LatestVersion))
-            {
-                result.Error = "В последнем релизе не указана версия (tag_name).";
-                return;
-            }
+                if (string.IsNullOrEmpty(result.LatestVersion))
+                {
+                    result.Error = "В последнем релизе не указана версия (tag_name).";
+                    return;
+                }
 
-            result.HasUpdate = CompareVersions(result.LatestVersion, currentVersion) > 0;
+                result.HasUpdate = CompareVersions(result.LatestVersion, currentVersion) > 0;
+            }
         }
 
-        private static string GetString(Dictionary<string, object> obj, string key)
+        private static string GetString(JsonElement obj, string key)
         {
-            object value;
-            if (obj != null && obj.TryGetValue(key, out value) && value != null)
-                return Convert.ToString(value);
+            try
+            {
+                if (obj.ValueKind == JsonValueKind.Object &&
+                    obj.TryGetProperty(key, out var value) &&
+                    value.ValueKind == JsonValueKind.String)
+                    return value.GetString();
+            }
+            catch { }
             return null;
         }
 
-        private static long GetLong(Dictionary<string, object> obj, string key)
+        private static long GetLong(JsonElement obj, string key)
         {
-            object value;
-            if (obj != null && obj.TryGetValue(key, out value) && value != null)
+            try
             {
-                try { return Convert.ToInt64(value); }
-                catch { }
+                if (obj.ValueKind == JsonValueKind.Object &&
+                    obj.TryGetProperty(key, out var value) &&
+                    value.ValueKind == JsonValueKind.Number)
+                    return value.GetInt64();
             }
+            catch { }
             return 0;
         }
 

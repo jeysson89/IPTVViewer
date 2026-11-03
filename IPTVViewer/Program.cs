@@ -9,10 +9,13 @@ namespace IPTVViewer
         [STAThread]
         static void Main(string[] args)
         {
-            DepsLoader.Register();
+            // На .NET Framework зависимости LibVLCSharp вшиты в exe-ресурсы
+            // и грузятся из памяти. Самодостаточные сборки (net6) получают их
+            // обычным способом — загрузчик там не нужен.
+            if (Environment.Version.Major == 4)
+                DepsLoader.Register();
 
-            AppDomain.CurrentDomain.UnhandledException += (s, e) => LogError(e.ExceptionObject as Exception);
-            Application.ThreadException += (s, e) => LogError(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => LogError(e.ExceptionObject as Exception);            Application.ThreadException += (s, e) => LogError(e.Exception);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 
             Application.EnableVisualStyles();

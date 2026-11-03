@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Web.Script.Serialization;
+using System.Text.Json;
 
 namespace IPTVViewer
 {
@@ -32,7 +32,10 @@ namespace IPTVViewer
         private static readonly string _dir =
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IPTVViewer");
         private static readonly string _file = Path.Combine(_dir, "settings.json");
-        private static readonly JavaScriptSerializer _json = new JavaScriptSerializer();
+        private static readonly JsonSerializerOptions _json = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
 
         public static AppSettings Load()
         {
@@ -41,7 +44,7 @@ namespace IPTVViewer
                 if (!File.Exists(_file))
                     return new AppSettings();
                 var txt = File.ReadAllText(_file);
-                var s = _json.Deserialize<AppSettings>(txt) ?? new AppSettings();
+                var s = JsonSerializer.Deserialize<AppSettings>(txt, _json) ?? new AppSettings();
                 // ссылки на плейлисты зашиты — пустые/старые значения восстанавливаем
                 var defaults = new AppSettings().SourceUrls;
                 if (s.SourceUrls == null)
@@ -68,7 +71,7 @@ namespace IPTVViewer
             try
             {
                 Directory.CreateDirectory(_dir);
-                File.WriteAllText(_file, _json.Serialize(s));
+                File.WriteAllText(_file, JsonSerializer.Serialize(s, _json));
             }
             catch { }
         }
