@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace IPTVViewer
@@ -24,6 +25,12 @@ namespace IPTVViewer
             if (args != null && Array.IndexOf(args, "--check-updates") >= 0)
             {
                 RunUpdateCheck(args);
+                return;
+            }
+
+            if (args != null && Array.IndexOf(args, "--portal-test") >= 0)
+            {
+                RunPortalTest(args);
                 return;
             }
 
@@ -104,6 +111,85 @@ namespace IPTVViewer
                     }
                 }
             });
+        }
+
+        private static void RunPortalTest(string[] args)
+        {
+            var sb = new System.Text.StringBuilder();
+            try
+            {
+                var url = "https://newline.iptvportal.ru/";
+                var settings = SettingsManager.Load();
+                if (settings.SourceUrls != null && settings.SourceUrls.Count > 0)
+                    url = settings.SourceUrls[0];
+
+                for (int i = 0; i < args.Length - 1; i++)
+                    if (args[i] == "--url") url = args[i + 1];
+
+                sb.AppendLine("portal=" + url);
+                var logPath = Path.Combine(SettingsManager.DataDir, "portaltest.log");
+                Action<string> step = msg =>
+                {
+                    sb.AppendLine(msg);
+                    try { Directory.CreateDirectory(SettingsManager.DataDir); File.WriteAllText(logPath, sb.ToString()); } catch { }
+                };
+                step("start");
+
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var result = PortalClient.Load(url, step);
+                watch.Stop();
+
+                sb.AppendLine("elapsedMs=" + watch.ElapsedMilliseconds);
+                sb.AppendLine("error=" + (result.Error ?? ""));
+                sb.AppendLine("channels=" + result.Channels.Count);
+
+                int shown = 0;
+                foreach (var ch in result.Channels)
+                {
+                    if (shown < 8)
+                    {
+                        sb.AppendLine("  " + ch.Name + " -> " + ch.Url);
+                        shown++;
+                    }
+                }
+
+                if (result.Epg != null)
+                {
+                    sb.AppendLine("epgEmpty=" + result.Epg.IsEmpty);
+                    if (!result.Epg.IsEmpty)
+                    {
+                        var ch0 = result.Channels.FirstOrDefault();
+                        var now = result.Epg.GetCurrent(ch0, DateTime.Now);
+                        sb.AppendLine("epgNow=" + (now != null ? now.Title + " " + now.TimeRange : ""));
+
+                        int withNow = 0;
+                        foreach (var ch in result.Channels)
+                            if (result.Epg.GetCurrent(ch, DateTime.Now) != null) withNow++;
+                        sb.AppendLine("channelsWithNow=" + withNow + "/" + result.Channels.Count);
+
+                        // пара примеров с программой
+                        int shownEpg = 0;
+                        foreach (var ch in result.Channels)
+                        {
+                            var cur = result.Epg.GetCurrent(ch, DateTime.Now);
+                            if (cur != null && shownEpg < 5)
+                            {
+                                sb.AppendLine("  epg: " + ch.Name + " [id=" + ch.TvgId + "] " +
+                                              cur.Title + " " + cur.TimeRange);
+                                shownEpg++;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine("exception=" + ex.Message);
+            }
+
+            Directory.CreateDirectory(SettingsManager.DataDir);
+            File.WriteAllText(Path.Combine(SettingsManager.DataDir, "portaltest.log"), sb.ToString());
+            Console.WriteLine(sb.ToString());
         }
 
         private static void RunEpgTest()

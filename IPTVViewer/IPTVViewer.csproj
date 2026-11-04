@@ -17,10 +17,13 @@
     <Product>IPTV Newline</Product>
     <AssemblyTitle>IPTV Newline</AssemblyTitle>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-    <Version>0.0.11</Version>
+    <Version>0.0.12</Version>
     <Deterministic>true</Deterministic>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RuntimeIdentifiers>win-x86;win-x64</RuntimeIdentifiers>
+    <!-- Командный билд из bin может работать на рантайме новее net6
+         (на dev-машине 8/10), публикация всегда самодостаточная. -->
+    <RollForward>LatestMajor</RollForward>
     <LangVersion>7.3</LangVersion>
   </PropertyGroup>
 

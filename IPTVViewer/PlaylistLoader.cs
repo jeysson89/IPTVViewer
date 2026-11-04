@@ -10,6 +10,9 @@ namespace IPTVViewer
     {
         public List<Channel> Channels { get; set; }
         public string EpgUrl { get; set; }
+        /// <summary>Непустой, когда источник — портал (там есть своя EPG).</summary>
+        public PortalClient.PortalResult Portal { get; set; }
+        public string SourceName { get; set; }
 
         public PlaylistResult()
         {
@@ -30,8 +33,22 @@ namespace IPTVViewer
 
         public static PlaylistResult Load(string url)
         {
+            // Портал раздаёт каналы через собственный JSON-RPC, а не M3U
+            if (url != null && url.IndexOf("iptvportal.ru", StringComparison.OrdinalIgnoreCase) >= 0)
+                return LoadPortal(url);
             var text = _client.GetStringAsync(url).GetAwaiter().GetResult();
             return Parse(text, url);
+        }
+
+        private static PlaylistResult LoadPortal(string url)
+        {
+            var result = new PlaylistResult();
+            var portal = PortalClient.Load(url);
+            if (portal.Error != null && portal.Channels.Count == 0)
+                throw new InvalidOperationException(portal.Error);
+            result.Channels = portal.Channels;
+            result.Portal = portal;
+            return result;
         }
 
         public static Task<PlaylistResult> LoadAsync(string url)

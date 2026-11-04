@@ -1038,8 +1038,24 @@ namespace IPTVViewer
             else
                 ApplyFilter("");
 
-            if (_settings.EpgEnabled && !string.IsNullOrWhiteSpace(_epgUrl) && _allChannels.Count > 0)
+            // У портала своя телепрограмма (JSON-RPC), XMLTV-файла нет
+            if (_settings.EpgEnabled && result.Portal != null && result.Portal.Epg != null)
+            {
+                _epg = result.Portal.Epg;
+                if (!_epg.IsEmpty)
+                {
+                    if (_epgTimer == null)
+                    {
+                        _epgTimer = new Timer { Interval = 60000 };
+                        _epgTimer.Tick += (s, e) => _lbChannels.Invalidate();
+                        _epgTimer.Start();
+                    }
+                }
+            }
+            else if (_settings.EpgEnabled && !string.IsNullOrWhiteSpace(_epgUrl) && _allChannels.Count > 0)
+            {
                 LoadEpgAsync(_epgUrl, _allChannels);
+            }
 
             // Автовоспроизведение: последний просмотренный канал, иначе первый
             if (_autoPlayOnLoad && _allChannels.Count > 0)
