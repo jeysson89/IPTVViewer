@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -74,6 +75,7 @@ namespace IPTVViewer
         private Button _btnStop;
         private Button _btnSettings;
         private Button _btnOnTop;
+        private Button _btnToggleChannels;
         private Button _btnFullscreen;
         private TrackBar _volume;
         private ToolStripStatusLabel _lblStatus;
@@ -87,6 +89,7 @@ namespace IPTVViewer
         private bool _uiBuilt;
 
         private bool _fullscreen;
+        private bool _channelsHidden;
         private FormBorderStyle _prevBorder;
         private FormWindowState _prevState;
         private Rectangle _prevBounds;
@@ -243,8 +246,12 @@ namespace IPTVViewer
             this.Icon = AppIcon.Get();
             this.StartPosition = FormStartPosition.Manual;
             this.Location = new Point(_settings.WindowX, _settings.WindowY);
-            this.ClientSize = new Size(_settings.WindowW, _settings.WindowH);
-            this.MinimumSize = new Size(840, 520);
+            // 970: кнопки источников (до x=590) + правая цепочка
+            // (иконка настроек + 2 кнопки, 362 px) — уже нельзя
+            this.MinimumSize = new Size(986, 520);
+            this.ClientSize = new Size(
+                Math.Max(_settings.WindowW, 970),
+                Math.Max(_settings.WindowH, 520));
             this.BackColor = Theme.Bg;
             this.ForeColor = Theme.Text;
             this.Font = Theme.FontRegular;
@@ -294,8 +301,8 @@ namespace IPTVViewer
             title.Location = new Point(156, 22);
             _topPanel.Controls.Add(title);
 
-            _btnSettings = Theme.CreateButton("Настройки", false);
-            _btnSettings.Size = new Size(110, 30);
+            _btnSettings = CreateIconButton(CreateGearIcon(18, Theme.Accent));
+            _btnSettings.Size = new Size(36, 34);
             _btnSettings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnSettings.Click += (s, e) => OpenSettings();
             _topPanel.Controls.Add(_btnSettings);
@@ -307,32 +314,44 @@ namespace IPTVViewer
             StyleTopMostButton();
             _topPanel.Controls.Add(_btnOnTop);
 
+            _btnToggleChannels = Theme.CreateButton("Скрыть список", false);
+            _btnToggleChannels.Size = new Size(120, 30);
+            _btnToggleChannels.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnToggleChannels.Click += (s, e) => ToggleChannelList();
+            _topPanel.Controls.Add(_btnToggleChannels);
+
             Action layoutTopButtons = () =>
             {
                 _btnSettings.Left = _topPanel.Width - _btnSettings.Width - 14;
                 _btnOnTop.Left = _btnSettings.Left - _btnOnTop.Width - 8;
+                _btnToggleChannels.Left = _btnOnTop.Left - _btnToggleChannels.Width - 8;
                 _btnSettings.Top = (_topPanel.Height - _btnSettings.Height) / 2;
                 _btnOnTop.Top = (_topPanel.Height - _btnOnTop.Height) / 2;
+                _btnToggleChannels.Top = (_topPanel.Height - _btnToggleChannels.Height) / 2;
             };
             _topPanel.Resize += (s, e) => layoutTopButtons();
             layoutTopButtons();
 
-            var lblSource = Theme.CreateLabel("Источник:", true, 9.5f, false);
-            lblSource.Location = new Point(300, 26);
-            _topPanel.Controls.Add(lblSource);
-
             _btnSourcePortal = CreateSourceButton("IPTVPORTAL", 0);
-            _btnSourcePortal.Location = new Point(376, 19);
+            _btnSourcePortal.Location = new Point(300, 19);
             _topPanel.Controls.Add(_btnSourcePortal);
 
             _btnSourceIsp = CreateSourceButton("M3U", 1);
-            _btnSourceIsp.Location = new Point(526, 19);
+            _btnSourceIsp.Location = new Point(450, 19);
             _topPanel.Controls.Add(_btnSourceIsp);
 
-            var sourceTips = new ToolTip();
+            var sourceTips = new ToolTip
+            {
+                InitialDelay = 400,      // появляется быстро при наведении
+                ReshowDelay = 200,       // и мгновенно при переходе на соседнюю кнопку
+                AutoPopDelay = 8000
+            };
             sourceTips.SetToolTip(_btnSourcePortal, "Источник: newline.iptvportal.ru");
             sourceTips.SetToolTip(_btnSourceIsp, "Источник: tv.isp-nl.ru/nltv.m3u");
             sourceTips.SetToolTip(_btnOnTop, "Держать окно поверх всех программ");
+            sourceTips.SetToolTip(_btnSettings, "Настройки");
+            sourceTips.SetToolTip(_btnToggleChannels,
+                "Скрыть или показать список каналов (Ctrl+L)");
 
             this.Controls.Add(_topPanel);
 
@@ -411,7 +430,13 @@ namespace IPTVViewer
                 ShowVolumeBadge(_volume.Value);
             };
 
-            var tips = new ToolTip();
+            var tips = new ToolTip
+            {
+                InitialDelay = 400,
+                ReshowDelay = 200,
+                AutoPopDelay = 8000
+            };
+            tips.SetToolTip(_btnPlay, "Воспроизвести выбранный канал");
             tips.SetToolTip(_btnFullscreen, "Полный экран (F11), выход — Esc");
             tips.SetToolTip(_volume, "Громкость");
             tips.SetToolTip(_btnStop, "Остановить воспроизведение");
@@ -578,6 +603,10 @@ namespace IPTVViewer
             try { ApplySplitLayout(); }
             catch { }
 
+            // состояние списка каналов из прошлых запусков — тихо, без статуса
+            _channelsHidden = _settings.ChannelsHidden;
+            ApplyChannelListVisibility(true);
+
             if (_settings.CheckUpdatesOnStartup)
             {
                 _startupTimer = new Timer { Interval = 3000 };
@@ -612,6 +641,13 @@ namespace IPTVViewer
             _split.Panel2MinSize = 280;
             _split.FixedPanel = FixedPanel.Panel2;
 
+            if (_channelsHidden && !_fullscreen)
+            {
+                // панель каналов схлопнута — видео занимает всё окно
+                try { _split.Panel2Collapsed = true; } catch { }
+                return;
+            }
+
             int distance = _split.Width - ChannelPanelWidth - _split.SplitterWidth;
             if (distance > 0)
                 _split.SplitterDistance = distance;
@@ -622,6 +658,127 @@ namespace IPTVViewer
             TopMost = !TopMost;
             StyleTopMostButton();
             SetStatus(TopMost ? "Окно закреплено поверх всех программ" : "Обычный режим окна");
+        }
+
+        // ===== Кнопка-иконка (шестерёнка) =====
+
+        /// <summary>Плоская кнопка без рамки: прозрачный фон, подсветка при наведении.</summary>
+        private Button CreateIconButton(Image icon)
+        {
+            var b = new Button
+            {
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Theme.Panel,
+                Image = icon,
+                ImageAlign = ContentAlignment.MiddleCenter,
+                Cursor = Cursors.Hand,
+                TabStop = true,
+                UseVisualStyleBackColor = false
+            };
+            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = Theme.PanelHover;
+            b.FlatAppearance.MouseDownBackColor = Theme.PanelHover;
+            return b;
+        }
+
+        /// <summary>Рисует шестерёнку: 8 зубьев + тело, отверстие прозрачное.</summary>
+        private static Bitmap CreateGearIcon(int size, Color color)
+        {
+            var bmp = new Bitmap(size, size);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                float cx = size / 2f, cy = size / 2f;
+                float rOuter = size * 0.44f; // кончики зубьев
+                float rBody = size * 0.32f;  // тело шестерни
+                float rHole = size * 0.13f;  // отверстие
+
+                using (var path = new GraphicsPath(FillMode.Alternate))
+                {
+                    int teeth = 8;
+                    float toothWidth = (float)(2 * Math.PI * rBody / teeth * 0.52);
+                    for (int i = 0; i < teeth; i++)
+                    {
+                        float angle = i * 360f / teeth;
+                        var pts = new[]
+                        {
+                            new PointF(-toothWidth / 2, -rOuter),
+                            new PointF( toothWidth / 2, -rOuter),
+                            new PointF( toothWidth / 2, -rBody),
+                            new PointF(-toothWidth / 2, -rBody)
+                        };
+                        var rotated = RotatePoints(pts, angle, cx, cy);
+                        path.AddPolygon(rotated);
+                    }
+                    path.AddEllipse(cx - rBody, cy - rBody, rBody * 2, rBody * 2);
+                    path.AddEllipse(cx - rHole, cy - rHole, rHole * 2, rHole * 2);
+
+                    using (var brush = new SolidBrush(color))
+                        g.FillPath(brush, path);
+                }
+            }
+            return bmp;
+        }
+
+        private static PointF[] RotatePoints(PointF[] pts, float degrees, float cx, float cy)
+        {
+            var rad = degrees * Math.PI / 180.0;
+            var cos = (float)Math.Cos(rad);
+            var sin = (float)Math.Sin(rad);
+            var result = new PointF[pts.Length];
+            for (int i = 0; i < pts.Length; i++)
+            {
+                float x = pts[i].X, y = pts[i].Y;
+                result[i] = new PointF(
+                    cx + x * cos - y * sin,
+                    cy + x * sin + y * cos);
+            }
+            return result;
+        }
+
+        // ===== Скрытие списка каналов (оконный режим) =====
+
+        private void ToggleChannelList()
+        {
+            if (_fullscreen)
+                return; // в полном экране список и так скрыт за оверлеем
+
+            _channelsHidden = !_channelsHidden;
+            var clientBefore = this.ClientSize;
+            ApplyChannelListVisibility(false);
+
+            // SplitContainer при схлопывании/развороте панели сдвигает
+            // разделитель и меняет ширину окна — возвращаем как было
+            BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    if (this.ClientSize != clientBefore)
+                        this.ClientSize = clientBefore;
+                    ApplySplitLayout();
+                }
+                catch { }
+            }));
+
+            try
+            {
+                _settings.ChannelsHidden = _channelsHidden;
+                SettingsManager.Save(_settings);
+            }
+            catch { }
+        }
+
+        private void ApplyChannelListVisibility(bool silent)
+        {
+            if (_split == null || _btnToggleChannels == null) return;
+
+            _split.Panel2Collapsed = _channelsHidden && !_fullscreen;
+            _btnToggleChannels.Text = _channelsHidden ? "Показать список" : "Скрыть список";
+            _btnToggleChannels.Width = _channelsHidden ? 136 : 120;
+
+            if (!silent)
+                SetStatus(_channelsHidden ? "Список каналов скрыт" : "Список каналов показан");
         }
 
         private void StyleTopMostButton()
@@ -714,7 +871,8 @@ namespace IPTVViewer
             _fsOverlay.Visible = false;
 
             AttachChannelPanelToSplit();
-            _split.Panel2Collapsed = false;
+            // возвращаем список каналов, если он не был скрыт пользователем
+            _split.Panel2Collapsed = _channelsHidden;
 
             // возвращаем строку контролов
             try { _videoHost.RowStyles[1].Height = 52f; } catch { }
@@ -805,6 +963,11 @@ namespace IPTVViewer
             else if (e.KeyCode == Keys.F11)
             {
                 ToggleFullscreen();
+                e.Handled = true;
+            }
+            else if (e.Control && e.KeyCode == Keys.L && !_fullscreen)
+            {
+                ToggleChannelList();
                 e.Handled = true;
             }
             else if (e.Control && e.KeyCode == Keys.F && _txtSearch != null)
@@ -1406,6 +1569,7 @@ namespace IPTVViewer
                 _settings.WindowY = this.Location.Y;
                 _settings.WindowW = this.ClientSize.Width;
                 _settings.WindowH = this.ClientSize.Height;
+                _settings.ChannelsHidden = _channelsHidden && !_fullscreen;
                 SettingsManager.Save(_settings);
             }
             catch { }
