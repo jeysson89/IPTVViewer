@@ -31,19 +31,22 @@ namespace IPTVViewer
             _client.Timeout = TimeSpan.FromSeconds(30);
         }
 
-        public static PlaylistResult Load(string url)
+        public static PlaylistResult Load(string url) { return Load(url, true); }
+
+        /// <summary>loadEpg=false — не ждать телепрограмму портала (быстрый старт).</summary>
+        public static PlaylistResult Load(string url, bool loadEpg)
         {
             // Портал раздаёт каналы через собственный JSON-RPC, а не M3U
             if (url != null && url.IndexOf("iptvportal.ru", StringComparison.OrdinalIgnoreCase) >= 0)
-                return LoadPortal(url);
+                return LoadPortal(url, loadEpg);
             var text = _client.GetStringAsync(url).GetAwaiter().GetResult();
             return Parse(text, url);
         }
 
-        private static PlaylistResult LoadPortal(string url)
+        private static PlaylistResult LoadPortal(string url, bool loadEpg)
         {
             var result = new PlaylistResult();
-            var portal = PortalClient.Load(url);
+            var portal = PortalClient.Load(url, null, loadEpg);
             if (portal.Error != null && portal.Channels.Count == 0)
                 throw new InvalidOperationException(portal.Error);
             result.Channels = portal.Channels;

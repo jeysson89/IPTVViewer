@@ -143,13 +143,23 @@ namespace IPTVViewer
             catch { }
         }
 
-        /// <summary>Колесо мыши: над видео меняем громкость, иначе пропускаем событие.</summary>
+        /// <summary>Колесо мыши: над списком каналов — прокрутка списка,
+        /// над видео — громкость. Работает и в окне, и в полном экране.</summary>
         private bool OnMouseWheelHook(Point pt, int delta)
         {
             try
             {
                 // реагируем только когда наше окно активно — не глотаем чужую прокрутку
                 if (Form.ActiveForm != this) return false;
+
+                // список каналов листается всегда, когда курсор над ним
+                // (и в оконном режиме, и в полноэкранном оверлее)
+                if (IsOverChannelList(pt))
+                {
+                    this.BeginInvoke(new Action(() => ScrollChannelList(delta)));
+                    return true;
+                }
+
                 if (_videoView == null || !_videoView.Visible) return false;
 
                 var playArea = _videoView.RectangleToScreen(
@@ -166,6 +176,28 @@ namespace IPTVViewer
             {
                 return false;
             }
+        }
+
+        private bool IsOverChannelList(Point pt)
+        {
+            if (_lbChannels == null || !_lbChannels.Visible) return false;
+            if (_channelPanel == null || !_channelPanel.Visible) return false;
+            return _lbChannels.RectangleToScreen(_lbChannels.ClientRectangle).Contains(pt);
+        }
+
+        private void ScrollChannelList(int delta)
+        {
+            try
+            {
+                int lines = SystemInformation.MouseWheelScrollLines;
+                if (lines <= 0) lines = 3; // 0 = «на страницу» — берём привычные 3 строки
+                int step = Math.Max(1, lines);
+                int target = delta > 0 ? _lbChannels.TopIndex - step
+                                       : _lbChannels.TopIndex + step;
+                int max = Math.Max(0, _lbChannels.Items.Count - 1);
+                _lbChannels.TopIndex = Math.Max(0, Math.Min(max, target));
+            }
+            catch { }
         }
 
         private void ChangeVolume(int delta)
@@ -1157,14 +1189,16 @@ namespace IPTVViewer
                 return;
             }
 
-            SetStatus("Загрузка плейлиста...");
+            SetStatus("Запуск плеера — загрузка списка каналов…");
             SetSourceButtonsEnabled(false);
 
             Task.Run(() =>
             {
                 try
                 {
-                    var result = PlaylistLoader.Load(url);
+                    // Каналы без ожидания EPG: список и воспроизведение
+                    // появляются сразу, телепрограмма догружается фоном.
+                    var result = PlaylistLoader.Load(url, false);
                     if (this.IsDisposed) return;
                     this.BeginInvoke(new Action(() => OnPlaylistLoaded(result)));
                 }
@@ -1201,23 +1235,27 @@ namespace IPTVViewer
             else
                 ApplyFilter("");
 
-            // У портала своя телепрограмма (JSON-RPC), XMLTV-файла нет
-            if (_settings.EpgEnabled && result.Portal != null && result.Portal.Epg != null)
+            // Портал: телепрограмму грузим отдельным проходом, не задерживая старт
+            if (_settings.EpgEnabled)
             {
-                _epg = result.Portal.Epg;
-                if (!_epg.IsEmpty)
+                if (result.Portal != null &&
+                    result.Portal.BaseUri != null &&
+                    !string.IsNullOrEmpty(result.Portal.SessionId))
                 {
-                    if (_epgTimer == null)
-                    {
-                        _epgTimer = new Timer { Interval = 60000 };
-                        _epgTimer.Tick += (s, e) => _lbChannels.Invalidate();
-                        _epgTimer.Start();
-                    }
+                    LoadPortalEpgAsync(result.Portal);
+                }
+                else if (!string.IsNullOrWhiteSpace(_epgUrl) && _allChannels.Count > 0)
+                {
+                    LoadEpgAsync(_epgUrl, _allChannels);
+                }
+                else
+                {
+                    SetStatus("Готово. Каналов: " + _allChannels.Count);
                 }
             }
-            else if (_settings.EpgEnabled && !string.IsNullOrWhiteSpace(_epgUrl) && _allChannels.Count > 0)
+            else
             {
-                LoadEpgAsync(_epgUrl, _allChannels);
+                SetStatus("Готово. Каналов: " + _allChannels.Count);
             }
 
             // Автовоспроизведение: последний просмотренный канал, иначе первый
@@ -1258,15 +1296,75 @@ namespace IPTVViewer
             PlaySelected();
         }
 
+        /// <summary>
+        /// Телепрограмма портала — отдельным фоновым проходом, после того как
+        /// список каналов уже показан и канал начал воспроизводиться.
+        /// </summary>
+        private void LoadPortalEpgAsync(PortalClient.PortalResult portal)
+        {
+            if (portal == null || portal.BaseUri == null || string.IsNullOrEmpty(portal.SessionId))
+                return;
+
+            _epgLoading = true;
+            int request = ++_epgRequest;
+            SetStatus("Загрузка телепрограммы…");
+
+            Task.Run(async () =>
+            {
+                // небольшая пауза: даём видеопотоку спокойно начать
+                // воспроизведение, чтобы EPG не конкурировала за сеть
+                try { await Task.Delay(3000); } catch { }
+
+                if (this.IsDisposed || request != _epgRequest) return;
+                try
+                {
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        if (this.IsDisposed || request != _epgRequest) return;
+                        SetStatus("Загрузка телепрограммы…");
+                    }));
+                }
+                catch { }
+
+                EpgData data = null;
+                try { data = PortalClient.LoadEpg(portal.BaseUri, portal.SessionId, portal.Channels); }
+                catch { }
+                if (this.IsDisposed || request != _epgRequest) return;
+                try
+                {
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        if (this.IsDisposed || request != _epgRequest) return;
+                        _epgLoading = false;
+                        _epg = data ?? new EpgData();
+                        _lbChannels.Invalidate();
+                        SetStatus(_epg.IsEmpty
+                            ? "Готово. Каналов: " + _allChannels.Count
+                            : "Телепрограмма загружена. Каналов: " + _allChannels.Count);
+
+                        if (!_epg.IsEmpty && _epgTimer == null)
+                        {
+                            _epgTimer = new Timer { Interval = 60000 };
+                            _epgTimer.Tick += (s, e) => _lbChannels.Invalidate();
+                            _epgTimer.Start();
+                        }
+                    }));
+                }
+                catch { }
+            });
+        }
+
         private void LoadEpgAsync(string epgUrl, List<Channel> channels)
         {
             _epgLoading = true;
             int request = ++_epgRequest;
-            SetStatus("Загрузка телепрограммы (EPG)…");
+            SetStatus("Загрузка телепрограммы…");
 
             Task.Run(() =>
             {
-                var data = EpgLoader.Load(epgUrl, channels);
+                EpgData data = null;
+                try { data = EpgLoader.Load(epgUrl, channels); }
+                catch { }
                 if (this.IsDisposed || request != _epgRequest) return;
                 try
                 {
@@ -1274,13 +1372,13 @@ namespace IPTVViewer
                     {
                         if (request != _epgRequest) return;
                         _epgLoading = false;
-                        _epg = data;
+                        _epg = data ?? new EpgData();
                         _lbChannels.Invalidate();
-                        SetStatus(data.IsEmpty
-                            ? "EPG: данные не найдены"
-                            : "EPG загружена — ПКМ по каналу откроет телепрограмму");
+                        SetStatus(_epg.IsEmpty
+                            ? "Готово. Каналов: " + _allChannels.Count
+                            : "Телепрограмма загружена. Каналов: " + _allChannels.Count);
 
-                        if (_epgTimer == null)
+                        if (!_epg.IsEmpty && _epgTimer == null)
                         {
                             _epgTimer = new Timer { Interval = 60000 };
                             _epgTimer.Tick += (s, e) => _lbChannels.Invalidate();

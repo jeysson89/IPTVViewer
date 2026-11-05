@@ -31,6 +31,11 @@ namespace IPTVViewer
             public EpgData Epg { get; set; }
             public string Error { get; set; }
 
+            // Нужны, чтобы догрузить EPG отдельным проходом, уже после
+            // показа списка каналов (старт приложения не ждёт телепрограмму).
+            public Uri BaseUri { get; set; }
+            public string SessionId { get; set; }
+
             public PortalResult()
             {
                 Channels = new List<Channel>();
@@ -67,10 +72,16 @@ namespace IPTVViewer
 
         // ===== Загрузка портала =====
 
-        public static PortalResult Load(string portalUrl) { return Load(portalUrl, null); }
+        public static PortalResult Load(string portalUrl) { return Load(portalUrl, null, true); }
 
         /// <summary>Полный цикл: вход → медиа-список → EPG. Ошибки — в Error.</summary>
-        public static PortalResult Load(string portalUrl, Action<string> step)
+        public static PortalResult Load(string portalUrl, Action<string> step) { return Load(portalUrl, step, true); }
+
+        /// <summary>
+        /// loadEpg=false — вернуть только список каналов (быстрый старт),
+        /// телепрограмму затем можно загрузить отдельно через LoadEpg().
+        /// </summary>
+        public static PortalResult Load(string portalUrl, Action<string> step, bool loadEpg)
         {
             var result = new PortalResult();
             try
@@ -105,6 +116,8 @@ namespace IPTVViewer
 
                 // 3) authorize_terminal → медиа-список
                 if (step != null) step("authorize_terminal...");
+                result.BaseUri = baseUri;
+                result.SessionId = session.SessionId;
                 using (var auth = JsonRpc(baseUri, "authorize_terminal",
                     new Dictionary<string, object>
                     {
@@ -138,9 +151,12 @@ namespace IPTVViewer
                 }
 
                 // 4) EPG на сегодня (некритично — при ошибке вернётся пустой)
-                if (step != null) step("epg...");
-                result.Epg = LoadEpg(baseUri, session.SessionId, result.Channels, step);
-                if (step != null) step("epg ok, empty=" + (result.Epg == null || result.Epg.IsEmpty));
+                if (loadEpg)
+                {
+                    if (step != null) step("epg...");
+                    result.Epg = LoadEpg(baseUri, session.SessionId, result.Channels, step);
+                    if (step != null) step("epg ok, empty=" + (result.Epg == null || result.Epg.IsEmpty));
+                }
             }
             catch (HttpRequestException ex)
             {
