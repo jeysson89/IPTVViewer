@@ -15,6 +15,7 @@ namespace IPTVViewer
         private readonly EpgData _epg;
         private ListBox _list;
         private Label _lblNow;
+        private Timer _timer;
 
         public EpgForm(Channel channel, EpgData epg)
         {
@@ -35,6 +36,45 @@ namespace IPTVViewer
 
             BuildUi();
             FillPrograms();
+
+            // прогресс текущей передачи обновляем, пока окно открыто
+            _timer = new Timer { Interval = 30000 };
+            _timer.Tick += (s, e) =>
+            {
+                UpdateNowLabel();
+                _list.Invalidate();
+            };
+            _timer.Start();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            if (_timer != null)
+            {
+                _timer.Stop();
+                _timer.Dispose();
+                _timer = null;
+            }
+            base.OnFormClosed(e);
+        }
+
+        private static int Percent(EpgProgram p, DateTime now)
+        {
+            if (p == null || p.Stop <= p.Start) return 0;
+            double frac = (now - p.Start).TotalSeconds / (p.Stop - p.Start).TotalSeconds;
+            if (frac < 0) frac = 0;
+            if (frac > 1) frac = 1;
+            return (int)Math.Round(frac * 100);
+        }
+
+        private void UpdateNowLabel()
+        {
+            if (_lblNow == null) return;
+            var now = DateTime.Now;
+            var current = _epg != null ? _epg.GetCurrent(_channel, now) : null;
+            _lblNow.Text = current == null
+                ? ""
+                : "Сейчас: " + current.TimeRange + " · " + Percent(current, now) + "%";
         }
 
         private void BuildUi()
@@ -132,7 +172,7 @@ namespace IPTVViewer
 
             var current = _epg.GetCurrent(_channel, now);
             if (current != null)
-                _lblNow.Text = "Сейчас: " + current.TimeRange;
+                _lblNow.Text = "Сейчас: " + current.TimeRange + " · " + Percent(current, now) + "%";
 
             if (currentIndex < 0)
             {
@@ -198,9 +238,29 @@ namespace IPTVViewer
                 TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
             string sub = live ? "Сейчас в эфире" : (past ? "Завершилась" : "Далее");
+            if (live)
+                sub = "Сейчас в эфире · " + Percent(program, now) + "%";
             var subColor = live ? Theme.Accent : Theme.TextDim;
             TextRenderer.DrawText(e.Graphics, sub, Theme.FontSmall, subRect, subColor,
                 TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+
+            // тонкий прогресс текущей передачи
+            if (live)
+            {
+                int trackLeft = e.Bounds.X + 140;
+                int trackWidth = Math.Max(0, e.Bounds.Right - 16 - trackLeft);
+                int trackY = e.Bounds.Bottom - 6;
+
+                using (var track = new SolidBrush(Color.FromArgb(70, Theme.Border)))
+                    e.Graphics.FillRectangle(track, trackLeft, trackY, trackWidth, 2);
+
+                int fillWidth = (int)Math.Round(trackWidth * Percent(program, now) / 100.0);
+                if (fillWidth > 0)
+                {
+                    using (var fill = new SolidBrush(Theme.Accent))
+                        e.Graphics.FillRectangle(fill, trackLeft, trackY, fillWidth, 2);
+                }
+            }
 
             using (var pen = new Pen(Theme.Border))
                 e.Graphics.DrawLine(pen, e.Bounds.X + 14, e.Bounds.Bottom - 1, e.Bounds.Right - 14, e.Bounds.Bottom - 1);

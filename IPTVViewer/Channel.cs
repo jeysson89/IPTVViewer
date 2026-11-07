@@ -5,6 +5,8 @@ namespace IPTVViewer
         public string Name { get; set; }
         public string Url { get; set; }
         public string Group { get; set; }
+        /// <summary>Идентификатор категории на портале (для сопоставления с названием).</summary>
+        public string GroupId { get; set; }
         public string TvgId { get; set; }
         public string TvgName { get; set; }
         public string Logo { get; set; }

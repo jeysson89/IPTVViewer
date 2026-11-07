@@ -29,6 +29,7 @@ namespace IPTVViewer
         {
             public List<Channel> Channels { get; set; }
             public EpgData Epg { get; set; }
+            public List<PortalCategory> Categories { get; set; }
             public string Error { get; set; }
 
             // Нужны, чтобы догрузить EPG отдельным проходом, уже после
@@ -39,7 +40,14 @@ namespace IPTVViewer
             public PortalResult()
             {
                 Channels = new List<Channel>();
+                Categories = new List<PortalCategory>();
             }
+        }
+
+        public class PortalCategory
+        {
+            public string Id { get; set; }
+            public string Title { get; set; }
         }
 
         private const string FirmwareVersion =
@@ -149,6 +157,28 @@ namespace IPTVViewer
                         throw new InvalidOperationException("Список каналов пуст.");
                     if (step != null) step("authorize ok, channels=" + result.Channels.Count);
                 }
+
+                // 3.1) категории каналов (названия групп) — один быстрый запрос
+                try
+                {
+                    result.Categories = LoadCategories(baseUri, session.SessionId, step);
+                    if (step != null) step("categories=" + result.Categories.Count);
+                    if (result.Categories.Count > 0)
+                    {
+                        var titles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var cat in result.Categories)
+                            if (!string.IsNullOrEmpty(cat.Id) && !string.IsNullOrEmpty(cat.Title))
+                                titles[cat.Id] = cat.Title;
+
+                        foreach (var ch in result.Channels)
+                        {
+                            string title;
+                            if (!string.IsNullOrEmpty(ch.GroupId) && titles.TryGetValue(ch.GroupId, out title))
+                                ch.Group = title;
+                        }
+                    }
+                }
+                catch { }
 
                 // 4) EPG на сегодня (некритично — при ошибке вернётся пустой)
                 if (loadEpg)
@@ -286,6 +316,20 @@ namespace IPTVViewer
                     obj.TryGetProperty(key, out var v) &&
                     v.ValueKind == JsonValueKind.String)
                     return v.GetString();
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>Строка или число (id категории у портала может быть числом).</summary>
+        private static string GetAnyString(JsonElement obj, string key)
+        {
+            try
+            {
+                if (obj.ValueKind != JsonValueKind.Object ||
+                    !obj.TryGetProperty(key, out var v)) return null;
+                if (v.ValueKind == JsonValueKind.String) return v.GetString();
+                if (v.ValueKind == JsonValueKind.Number) return v.GetRawText();
             }
             catch { }
             return null;
@@ -645,11 +689,54 @@ namespace IPTVViewer
                     Url = url,
                     TvgId = Get(iMediaId),
                     Logo = Get(iLogo),
+                    GroupId = Get(iGroupId),
                     Group = "Эфирные каналы"
                 });
             }
 
             return channels;
+        }
+
+        // ===== Категории каналов =====
+
+        /// <summary>Названия категорий портала: get_categories (app=playlist).</summary>
+        public static List<PortalCategory> LoadCategories(Uri baseUri, string sessionId, Action<string> step = null)
+        {
+            var list = new List<PortalCategory>();
+            if (string.IsNullOrEmpty(sessionId)) return list;
+
+            using (var doc = JsonRpc(baseUri, "get_categories",
+                new Dictionary<string, object>
+                {
+                    { "session_id", sessionId },
+                    { "app", "playlist" },
+                    { "media_items", false },
+                    { "media_count", true }
+                }, false))
+            {
+                var root = doc.RootElement;
+                if (step != null)
+                {
+                    var raw = root.GetRawText();
+                    step("categories raw: " + (raw.Length > 600 ? raw.Substring(0, 600) : raw));
+                }
+                if (root.ValueKind != JsonValueKind.Object ||
+                    !root.TryGetProperty("result", out var result) ||
+                    result.ValueKind != JsonValueKind.Object ||
+                    !result.TryGetProperty("categories", out var cats) ||
+                    cats.ValueKind != JsonValueKind.Array)
+                    return list;
+
+                foreach (var cat in cats.EnumerateArray())
+                {
+                    if (cat.ValueKind != JsonValueKind.Object) continue;
+                    var id = GetAnyString(cat, "id");
+                    var title = GetAnyString(cat, "title") ?? GetAnyString(cat, "name");
+                    if (string.IsNullOrEmpty(id) || string.IsNullOrWhiteSpace(title)) continue;
+                    list.Add(new PortalCategory { Id = id, Title = title.Trim() });
+                }
+            }
+            return list;
         }
 
         // ===== EPG =====

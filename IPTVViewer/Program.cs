@@ -142,6 +142,16 @@ namespace IPTVViewer
                 sb.AppendLine("elapsedMs=" + watch.ElapsedMilliseconds);
                 sb.AppendLine("error=" + (result.Error ?? ""));
                 sb.AppendLine("channels=" + result.Channels.Count);
+                sb.AppendLine("categories=" + (result.Categories != null ? result.Categories.Count : 0));
+                sb.AppendLine("groupIds=" + string.Join(",", result.Channels
+                    .Select(c => c.GroupId)
+                    .Distinct()
+                    .Take(30)));
+                if (result.Categories != null)
+                {
+                    foreach (var cat in result.Categories)
+                        sb.AppendLine("  cat " + cat.Id + " = " + cat.Title);
+                }
 
                 int shown = 0;
                 foreach (var ch in result.Channels)

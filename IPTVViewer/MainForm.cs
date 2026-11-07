@@ -60,6 +60,15 @@ namespace IPTVViewer
         private SplitContainer _split;
         private Panel _channelPanel;
         private Panel _searchWrap;
+        private Panel _catWrap;
+        private Panel _catScroll;
+        private Button _btnCatLeft;
+        private Button _btnCatRight;
+        private readonly List<Button> _catButtons = new List<Button>();
+        private string _selectedGroup = "";
+        private int _catScrollX;
+        private int _catContentWidth;
+        private bool _categoriesShown;
         private Panel _listWrap;
         private Panel _videoWrap;
         private TableLayoutPanel _videoHost;
@@ -526,6 +535,32 @@ namespace IPTVViewer
             _searchWrap.Controls.Add(_txtSearch);
             _channelPanel.Controls.Add(_searchWrap);
 
+            // ===== Категории каналов (полоса кнопок с прокруткой) =====
+            _catWrap = new Panel
+            {
+                Location = new Point(0, 52),
+                Size = new Size(300, 40),
+                BackColor = Theme.Panel,
+                Visible = false
+            };
+
+            _btnCatLeft = CreateCatArrow("‹");
+            _btnCatLeft.Click += (s, e) => ScrollCategories(-140);
+            _btnCatRight = CreateCatArrow("›");
+            _btnCatRight.Click += (s, e) => ScrollCategories(140);
+
+            _catScroll = new Panel
+            {
+                Location = new Point(32, 0),
+                Size = new Size(236, 40),
+                BackColor = Theme.Panel
+            };
+
+            _catWrap.Controls.Add(_catScroll);
+            _catWrap.Controls.Add(_btnCatLeft);
+            _catWrap.Controls.Add(_btnCatRight);
+            _channelPanel.Controls.Add(_catWrap);
+
             _lbChannels = new ListBox
             {
                 Dock = DockStyle.Fill,
@@ -616,10 +651,266 @@ namespace IPTVViewer
             if (_channelPanel == null) return;
             int w = Math.Max(0, _channelPanel.ClientSize.Width);
             int h = Math.Max(0, _channelPanel.ClientSize.Height);
+            int top = 52;
+
             _searchWrap.Location = new Point(0, 0);
             _searchWrap.Size = new Size(w, 52);
-            _listWrap.Location = new Point(0, 52);
-            _listWrap.Size = new Size(w, Math.Max(0, h - 52));
+
+            if (_catWrap != null)
+            {
+                bool show = _categoriesShown;
+                _catWrap.Location = new Point(0, 52);
+                _catWrap.Size = new Size(w, show ? 40 : 0);
+
+                _btnCatLeft.Location = new Point(6, 6);
+                _btnCatLeft.Size = new Size(22, 28);
+                _btnCatRight.Location = new Point(Math.Max(0, w - 28), 6);
+                _btnCatRight.Size = new Size(22, 28);
+                _catScroll.Location = new Point(32, 0);
+                _catScroll.Size = new Size(Math.Max(0, w - 64), 40);
+
+                if (show)
+                {
+                    PositionCategoryButtons();
+                    UpdateCatArrows();
+                    top = 92;
+                }
+            }
+
+            _listWrap.Location = new Point(0, top);
+            _listWrap.Size = new Size(w, Math.Max(0, h - top));
+        }
+
+        // ===== Категории каналов =====
+
+        private Button CreateCatArrow(string text)
+        {
+            var b = new Button
+            {
+                Text = text,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Theme.PanelAlt,
+                ForeColor = Theme.TextDim,
+                Font = new Font(Theme.FontBold.FontFamily, 12f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                TabStop = false,
+                UseVisualStyleBackColor = false
+            };
+            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = Theme.PanelHover;
+            b.FlatAppearance.MouseDownBackColor = Theme.PanelHover;
+            return b;
+        }
+
+        /// <summary>Строит кнопки категорий по группам загруженных каналов.</summary>
+        private void RebuildCategories()
+        {
+            if (_catScroll == null) return;
+
+            foreach (var b in _catButtons)
+            {
+                _catScroll.Controls.Remove(b);
+                b.Dispose();
+            }
+            _catButtons.Clear();
+
+            var groups = new List<KeyValuePair<string, int>>();
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ch in _allChannels)
+            {
+                if (ch == null || string.IsNullOrWhiteSpace(ch.Group)) continue;
+                int n;
+                if (seen.TryGetValue(ch.Group, out n)) seen[ch.Group] = n + 1;
+                else seen[ch.Group] = 1;
+            }
+            foreach (var kv in seen)
+                groups.Add(new KeyValuePair<string, int>(kv.Key, kv.Value));
+            groups.Sort((a, b) => b.Value != a.Value
+                ? b.Value.CompareTo(a.Value)
+                : string.Compare(a.Key, b.Key, StringComparison.CurrentCultureIgnoreCase));
+
+            bool show = groups.Count > 1;
+            _categoriesShown = show;
+            _catWrap.Visible = show;
+            if (!show)
+            {
+                _selectedGroup = "";
+                _catScrollX = 0;
+                LayoutChannelPanel();
+                return;
+            }
+
+            if (_selectedGroup.Length > 0 && !seen.ContainsKey(_selectedGroup))
+                _selectedGroup = "";
+
+            _catButtons.Add(CreateCategoryButton("Все", ""));
+            foreach (var g in groups)
+                _catButtons.Add(CreateCategoryButton(g.Key, g.Key));
+
+            foreach (var b in _catButtons)
+                _catScroll.Controls.Add(b);
+
+            _catScrollX = 0;
+            StyleCategoryButtons();
+            LayoutChannelPanel();
+        }
+
+        private Button CreateCategoryButton(string title, string group)
+        {
+            var b = new Button
+            {
+                Text = title,
+                Height = 28,
+                Top = 6,
+                FlatStyle = FlatStyle.Flat,
+                Font = Theme.FontSmall,
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter,
+                UseVisualStyleBackColor = false,
+                Tag = group
+            };
+            int width = TextRenderer.MeasureText(title, Theme.FontSmall).Width + 24;
+            b.Width = Math.Max(40, width);
+            b.FlatAppearance.BorderSize = 0;
+            b.Click += (s, e) => SelectCategory(group);
+            return b;
+        }
+
+        private void SelectCategory(string group)
+        {
+            _selectedGroup = group ?? "";
+            StyleCategoryButtons();
+            ApplyFilter(_searchPlaceholderActive ? "" : (_txtSearch.Text ?? ""));
+        }
+
+        /// <summary>
+        /// Если источник не даёт категорий (портал — плоский список), берём
+        /// группы из другого настроенного плейлиста и сопоставляем по названию.
+        /// </summary>
+        private void TryFillGroupsFromOtherSource()
+        {
+            if (_allChannels == null || _allChannels.Count == 0) return;
+
+            var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ch in _allChannels)
+                if (!string.IsNullOrWhiteSpace(ch.Group)) known.Add(ch.Group);
+            if (known.Count > 1) return;
+
+            string current = GetSelectedUrl();
+            var urls = new List<string>();
+            if (_settings.SourceUrls != null)
+            {
+                foreach (var u in _settings.SourceUrls)
+                {
+                    if (string.IsNullOrWhiteSpace(u)) continue;
+                    if (string.Equals(u, current, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (u.IndexOf("iptvportal.ru", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                    urls.Add(u);
+                }
+            }
+            if (urls.Count == 0) return;
+
+            var channels = _allChannels;
+            Task.Run(() =>
+            {
+                var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var u in urls)
+                {
+                    try
+                    {
+                        var playlist = PlaylistLoader.Load(u, false);
+                        foreach (var c in playlist.Channels)
+                        {
+                            if (string.IsNullOrWhiteSpace(c.Group)) continue;
+                            var key = GroupKey(c.Name);
+                            if (key.Length == 0 || map.ContainsKey(key)) continue;
+                            map[key] = c.Group;
+                        }
+                    }
+                    catch { }
+                }
+                if (map.Count == 0 || this.IsDisposed) return;
+                try
+                {
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        if (this.IsDisposed || !ReferenceEquals(channels, _allChannels)) return;
+                        bool changed = false;
+                        foreach (var ch in channels)
+                        {
+                            if (!string.IsNullOrWhiteSpace(ch.Group) &&
+                                !string.Equals(ch.Group, "Эфирные каналы", StringComparison.OrdinalIgnoreCase))
+                                continue;
+                            string group;
+                            var key = GroupKey(ch.Name);
+                            if (key.Length > 0 && map.TryGetValue(key, out group))
+                            {
+                                ch.Group = group;
+                                changed = true;
+                            }
+                        }
+                        if (!changed) return;
+                        RebuildCategories();
+                        ApplyFilter(_searchPlaceholderActive ? "" : (_txtSearch.Text ?? ""));
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        /// <summary>Ключ сопоставления каналов: без пробелов и знаков, но с HD.</summary>
+        private static string GroupKey(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            return System.Text.RegularExpressions.Regex.Replace(
+                name.ToLowerInvariant(), @"[^0-9a-zа-яё]+", "");
+        }
+
+        private void StyleCategoryButtons()
+        {
+            foreach (var b in _catButtons)
+            {
+                bool active = string.Equals((b.Tag as string) ?? "",
+                    _selectedGroup ?? "", StringComparison.OrdinalIgnoreCase);
+                b.BackColor = active ? Theme.Accent : Theme.PanelAlt;
+                b.ForeColor = active ? Color.White : Theme.Text;
+                b.FlatAppearance.MouseOverBackColor = active ? Theme.AccentHover : Theme.PanelHover;
+            }
+        }
+
+        private void PositionCategoryButtons()
+        {
+            if (_catScroll == null) return;
+            int x = 0;
+            foreach (var b in _catButtons)
+            {
+                b.Left = x - _catScrollX;
+                x += b.Width + 6;
+            }
+            _catContentWidth = _catButtons.Count > 0 ? Math.Max(0, x - 6) : 0;
+        }
+
+        private void ScrollCategories(int delta)
+        {
+            int view = _catScroll != null ? _catScroll.ClientSize.Width : 0;
+            int max = Math.Max(0, _catContentWidth - view);
+            int next = _catScrollX + delta;
+            if (next < 0) next = 0;
+            if (next > max) next = max;
+            _catScrollX = next;
+            PositionCategoryButtons();
+            UpdateCatArrows();
+        }
+
+        private void UpdateCatArrows()
+        {
+            if (_btnCatLeft == null || _btnCatRight == null) return;
+            int view = _catScroll != null ? _catScroll.ClientSize.Width : 0;
+            int max = Math.Max(0, _catContentWidth - view);
+            _btnCatLeft.Enabled = _catScrollX > 0;
+            _btnCatRight.Enabled = _catScrollX < max;
+            _btnCatLeft.ForeColor = _btnCatLeft.Enabled ? Theme.TextDim : Theme.Border;
+            _btnCatRight.ForeColor = _btnCatRight.Enabled ? Theme.TextDim : Theme.Border;
         }
 
         private void LayoutFullscreenOverlay()
@@ -1026,11 +1317,22 @@ namespace IPTVViewer
         private void UpdateStatusForChannel(Channel ch)
         {
             if (ch == null) return;
-            var current = _epg != null ? _epg.GetCurrent(ch, DateTime.Now) : null;
+            var now = DateTime.Now;
+            var current = _epg != null ? _epg.GetCurrent(ch, now) : null;
             if (current != null)
-                SetStatus(ch.Name + " — " + current.Title + " (" + current.TimeRange + ")");
+            {
+                int percent = 0;
+                var total = (current.Stop - current.Start).TotalSeconds;
+                if (total > 0)
+                    percent = (int)Math.Round(100 * (now - current.Start).TotalSeconds / total);
+                if (percent < 0) percent = 0;
+                if (percent > 100) percent = 100;
+                SetStatus(ch.Name + " — " + current.Title + " (" + current.TimeRange + ") — " + percent + "%");
+            }
             else
+            {
                 SetStatus(ch.Name);
+            }
         }
 
         private void ShowEpgForSelected()
@@ -1091,24 +1393,46 @@ namespace IPTVViewer
 
             string second = ch.Group;
             Color secondColor = Theme.TextDim;
-            bool showProgram = false;
+            EpgProgram current = _epg != null ? _epg.GetCurrent(ch, DateTime.Now) : null;
 
-            if ((hover || selected) && _epg != null)
+            if (current != null)
             {
-                var current = _epg.GetCurrent(ch, DateTime.Now);
-                if (current != null)
-                {
-                    second = "Сейчас: " + current.Title + "  " + current.TimeRange;
-                    secondColor = Theme.Accent;
-                    showProgram = true;
-                }
+                // у всех каналов с телепрограммой показываем текущую передачу
+                second = current.Title;
+                secondColor = (hover || selected) ? Theme.Accent : Theme.TextDim;
             }
 
             if (!string.IsNullOrWhiteSpace(second))
             {
-                TextRenderer.DrawText(e.Graphics, second, showProgram ? Theme.FontSmall : Theme.FontSmall,
+                TextRenderer.DrawText(e.Graphics, second, Theme.FontSmall,
                     secondRect, secondColor,
                     TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            }
+
+            // тонкий индикатор прогресса текущей передачи
+            if (current != null && current.Stop > current.Start)
+            {
+                double frac = (DateTime.Now - current.Start).TotalSeconds /
+                              (current.Stop - current.Start).TotalSeconds;
+                if (frac < 0) frac = 0;
+                if (frac > 1) frac = 1;
+
+                int trackLeft = e.Bounds.X + 14;
+                int trackWidth = Math.Max(0, e.Bounds.Right - 14 - trackLeft);
+                int trackY = e.Bounds.Bottom - 5;
+
+                using (var track = new SolidBrush(Color.FromArgb(70, Theme.Border)))
+                    e.Graphics.FillRectangle(track, trackLeft, trackY, trackWidth, 2);
+
+                int fillWidth = (int)Math.Round(trackWidth * frac);
+                if (fillWidth > 0)
+                {
+                    Color fillColor = (hover || selected)
+                        ? Theme.Accent
+                        : Color.FromArgb(150, Theme.Accent);
+                    using (var fill = new SolidBrush(fillColor))
+                        e.Graphics.FillRectangle(fill, trackLeft, trackY, fillWidth, 2);
+                }
             }
 
             using (var pen = new Pen(Theme.Border))
@@ -1167,8 +1491,11 @@ namespace IPTVViewer
             _lbChannels.BeginUpdate();
             _lbChannels.Items.Clear();
             var q = (text ?? "").Trim().ToLowerInvariant();
+            bool byGroup = !string.IsNullOrEmpty(_selectedGroup);
             foreach (var ch in _allChannels)
             {
+                if (byGroup && !string.Equals(ch.Group ?? "", _selectedGroup, StringComparison.OrdinalIgnoreCase))
+                    continue;
                 if (q.Length == 0 ||
                     (ch.Name ?? "").ToLowerInvariant().Contains(q) ||
                     (ch.Group ?? "").ToLowerInvariant().Contains(q))
@@ -1177,7 +1504,9 @@ namespace IPTVViewer
                 }
             }
             _lbChannels.EndUpdate();
-            SetStatus($"Каналов: {_lbChannels.Items.Count} из {_allChannels.Count}");
+            SetStatus(byGroup
+                ? _selectedGroup + ": " + _lbChannels.Items.Count + " из " + _allChannels.Count
+                : "Каналов: " + _lbChannels.Items.Count + " из " + _allChannels.Count);
         }
 
         private void LoadSelectedSource()
@@ -1226,6 +1555,9 @@ namespace IPTVViewer
             _epg = null;
             _epgLoading = false;
             _epgRequest++;
+            _selectedGroup = "";
+            RebuildCategories();
+            TryFillGroupsFromOtherSource();
             _epgUrl = !string.IsNullOrWhiteSpace(_settings.EpgUrl)
                 ? _settings.EpgUrl.Trim()
                 : result.EpgUrl;
@@ -1344,7 +1676,7 @@ namespace IPTVViewer
 
                         if (!_epg.IsEmpty && _epgTimer == null)
                         {
-                            _epgTimer = new Timer { Interval = 60000 };
+                            _epgTimer = new Timer { Interval = 30000 };
                             _epgTimer.Tick += (s, e) => _lbChannels.Invalidate();
                             _epgTimer.Start();
                         }
@@ -1380,7 +1712,7 @@ namespace IPTVViewer
 
                         if (!_epg.IsEmpty && _epgTimer == null)
                         {
-                            _epgTimer = new Timer { Interval = 60000 };
+                            _epgTimer = new Timer { Interval = 30000 };
                             _epgTimer.Tick += (s, e) => _lbChannels.Invalidate();
                             _epgTimer.Start();
                         }
