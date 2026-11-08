@@ -147,6 +147,10 @@ namespace IPTVViewer
                     .Select(c => c.GroupId)
                     .Distinct()
                     .Take(30)));
+                sb.AppendLine("withLogo=" + result.Channels.Count(c => !string.IsNullOrWhiteSpace(c.Logo)) +
+                    "/" + result.Channels.Count);
+                foreach (var ch in result.Channels.Where(c => !string.IsNullOrWhiteSpace(c.Logo)).Take(5))
+                    sb.AppendLine("  logo " + ch.Name + " = " + ch.Logo);
                 if (result.Categories != null)
                 {
                     foreach (var cat in result.Categories)

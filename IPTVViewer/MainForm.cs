@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -70,6 +71,10 @@ namespace IPTVViewer
         private int _catContentWidth;
         private bool _categoriesShown;
         private Panel _listWrap;
+        private readonly Dictionary<string, Image> _logoCache = new Dictionary<string, Image>();
+        private readonly object _cacheLock = new object();
+        private int _logoGeneration;
+        private static readonly Font LogoLetterFont = new Font(Theme.FontSmall.FontFamily, 10f, FontStyle.Bold);
         private Panel _videoWrap;
         private TableLayoutPanel _videoHost;
         private Panel _controlsPanel;
@@ -1142,6 +1147,151 @@ namespace IPTVViewer
             return null;
         }
 
+        /// <summary>
+        /// Логотип канала: из плейлиста (tvg-logo) либо выводится из адреса потока
+        /// провайдера: /play/a001/index.m3u8 -> /playlist/tvg-logo/a001.png.
+        /// </summary>
+        private static string ResolveLogoUrl(Channel ch)
+        {
+            if (ch == null) return null;
+            if (!string.IsNullOrWhiteSpace(ch.Logo)) return ch.Logo.Trim();
+            if (string.IsNullOrWhiteSpace(ch.Url)) return null;
+
+            var m = System.Text.RegularExpressions.Regex.Match(ch.Url,
+                @"^(https?://[^/]+)/play/([^/]+)/", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success) return null;
+            return m.Groups[1].Value + "/playlist/tvg-logo/" + m.Groups[2].Value + ".png";
+        }
+
+        /// <summary>Фоновая загрузка логотипов: первые 200 каналов, кэшируется по URL.</summary>
+        private void StartLoadingLogos()
+        {
+            int generation;
+            lock (_cacheLock)
+            {
+                _logoCache.Clear();
+                generation = ++_logoGeneration;
+            }
+            if (_allChannels == null) return;
+
+            var urls = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ch in _allChannels.Take(200))
+            {
+                var u = ResolveLogoUrl(ch);
+                if (string.IsNullOrWhiteSpace(u)) continue;
+                ch.Logo = u;
+                if (seen.Add(u)) urls.Add(u);
+            }
+            if (urls.Count == 0) return;
+
+            Task.Run(() =>
+            {
+                int sinceRepaint = 0;
+                foreach (var u in urls)
+                {
+                    if (System.Threading.Volatile.Read(ref _logoGeneration) != generation) return;
+
+                    try
+                    {
+                        lock (_cacheLock)
+                        {
+                            if (_logoCache.ContainsKey(u)) continue;
+                        }
+
+                        var icon = LoadImageAsync(u);
+                        if (icon != null)
+                        {
+                            lock (_cacheLock)
+                            {
+                                if (_logoCache.ContainsKey(u)) continue;
+                                _logoCache[u] = icon;
+                            }
+                            sinceRepaint++;
+                        }
+                    }
+                    catch { }
+
+                    // перерисовываем список по мере поступления логотипов
+                    if (sinceRepaint >= 4)
+                    {
+                        sinceRepaint = 0;
+                        RepaintChannelList();
+                    }
+                }
+                RepaintChannelList();
+            });
+        }
+
+        private void RepaintChannelList()
+        {
+            try
+            {
+                if (IsDisposed || !IsHandleCreated || _lbChannels == null) return;
+                BeginInvoke(new Action(() =>
+                {
+                    if (!IsDisposed && _lbChannels != null) _lbChannels.Invalidate();
+                }));
+            }
+            catch { }
+        }
+
+        /// <summary>Скачивает PNG в память и отдаёт независимую копию (поток закрывается).</summary>
+        private static Image LoadImageAsync(string url)
+        {
+            try
+            {
+                using (var wc = new System.Net.WebClient())
+                {
+                    wc.Headers.Add("User-Agent", "IPTVViewer/1.0");
+                    wc.Headers.Add("Referer", "http://tv.isp-nl.ru/");
+                    var data = wc.DownloadData(url);
+                    using (var ms = new System.IO.MemoryStream(data))
+                    using (var tmp = Image.FromStream(ms))
+                        return new Bitmap(tmp);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private int DrawChannelLogo(Graphics g, Channel ch, int x, int y, int width, int height, bool selected)
+        {
+            var url = ResolveLogoUrl(ch);
+
+            Image logo = null;
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                lock (_cacheLock)
+                {
+                    _logoCache.TryGetValue(url, out logo);
+                }
+            }
+
+            if (logo == null || logo.Width <= 0 || logo.Height <= 0)
+            {
+                // Заглушка, пока логотип загружается: плашка с первой буквой
+                using (var b = new SolidBrush(Color.FromArgb(34, Theme.TextDim)))
+                    g.FillRectangle(b, x, y, width, height);
+                var letter = string.IsNullOrWhiteSpace(ch.Name) ? "?" : ch.Name.Trim().Substring(0, 1).ToUpperInvariant();
+                TextRenderer.DrawText(g, letter, LogoLetterFont, new Rectangle(x, y, width, height), Theme.TextDim,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                return x + width + 8;
+            }
+
+            float sw = logo.Width, sh = logo.Height;
+            float scale = Math.Min((float)width / sw, (float)height / sh);
+            int dw = Math.Max(1, (int)(sw * scale));
+            int dh = Math.Max(1, (int)(sh * scale));
+            int dx = x + (width - dw) / 2;
+            int dy = y + (height - dh) / 2;
+
+            g.DrawImage(logo, dx, dy, dw, dh);
+            return x + width + 8;
+        }
+
         // ===== Полный экран =====
 
         private void ToggleFullscreen()
@@ -1385,8 +1535,11 @@ namespace IPTVViewer
                     e.Graphics.FillRectangle(accent, new Rectangle(e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height));
             }
 
-            var nameRect = new Rectangle(e.Bounds.X + 14, e.Bounds.Y + 6, e.Bounds.Width - 24, 20);
-            var secondRect = new Rectangle(e.Bounds.X + 14, e.Bounds.Y + 26, e.Bounds.Width - 24, 17);
+            int logoX = DrawChannelLogo(e.Graphics, ch, e.Bounds.X + 8, e.Bounds.Y + 5, 36, 26, selected);
+            int textX = logoX + 6;
+            int textW = Math.Max(20, e.Bounds.Right - 14 - textX);
+            var nameRect = new Rectangle(textX, e.Bounds.Y + 6, textW, 20);
+            var secondRect = new Rectangle(textX, e.Bounds.Y + 26, textW, 17);
 
             TextRenderer.DrawText(e.Graphics, ch.Name ?? "", Theme.FontBold, nameRect, Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
@@ -1558,6 +1711,7 @@ namespace IPTVViewer
             _selectedGroup = "";
             RebuildCategories();
             TryFillGroupsFromOtherSource();
+            StartLoadingLogos();
             _epgUrl = !string.IsNullOrWhiteSpace(_settings.EpgUrl)
                 ? _settings.EpgUrl.Trim()
                 : result.EpgUrl;

@@ -17,7 +17,7 @@
     <Product>IPTV Newline</Product>
     <AssemblyTitle>IPTV Newline</AssemblyTitle>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-    <Version>0.0.16</Version>
+    <Version>0.0.17</Version>
     <Deterministic>true</Deterministic>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RuntimeIdentifiers>win-x86;win-x64</RuntimeIdentifiers>
