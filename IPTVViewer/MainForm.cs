@@ -76,6 +76,8 @@ namespace IPTVViewer
         private int _logoGeneration;
         private static readonly Font LogoLetterFont = new Font(Theme.FontSmall.FontFamily, 10f, FontStyle.Bold);
         private Panel _videoWrap;
+        private Panel _videoIdle;
+        private Image _appLogo;
         private TableLayoutPanel _videoHost;
         private Panel _controlsPanel;
         private Panel _fsOverlay;
@@ -313,7 +315,14 @@ namespace IPTVViewer
                 _libVLC = new LibVLC();
                 _mediaPlayer = new MediaPlayer(_libVLC);
                 _mediaPlayer.Volume = 80;
-                _mediaPlayer.EncounteredError += (s, e) => SetStatus("VLC: ошибка воспроизведения потока");
+                _mediaPlayer.EncounteredError += (s, e) =>
+                {
+                    SetStatus("VLC: ошибка воспроизведения потока");
+                    ShowIdleIfStopped();
+                };
+                _mediaPlayer.EndReached += (s, e) => ShowIdleIfStopped();
+                _mediaPlayer.Stopped += (s, e) => ShowIdleIfStopped();
+                _mediaPlayer.Playing += (s, e) => HideIdleOnPlaying();
             }
             catch (Exception ex)
             {
@@ -434,6 +443,14 @@ namespace IPTVViewer
                 };
                 _videoWrap.Controls.Add(_videoView);
             }
+
+            // Заставка вместо чёрного экрана: логотип, когда воспроизведение остановлено
+            _appLogo = LoadLogo();
+            _videoIdle = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black };
+            _videoIdle.Paint += VideoIdle_Paint;
+            _videoWrap.Controls.Add(_videoIdle);
+            _videoIdle.BringToFront();
+
             videoHost.Controls.Add(_videoWrap, 0, 0);
 
             _controlsPanel = new Panel
@@ -1292,6 +1309,101 @@ namespace IPTVViewer
             return x + width + 8;
         }
 
+        // ===== Заставка видео (когда воспроизведение остановлено) =====
+
+        private void VideoIdle_Paint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Color.Black);
+
+            int w = _videoIdle.ClientSize.Width;
+            int h = _videoIdle.ClientSize.Height;
+            if (w <= 0 || h <= 0) return;
+
+            int logoH = 0;
+            if (_appLogo != null && _appLogo.Width > 0 && _appLogo.Height > 0)
+            {
+                int maxW = Math.Max(120, (int)(w * 0.34));
+                int maxH = Math.Max(60, (int)(h * 0.34));
+                float scale = Math.Min((float)maxW / _appLogo.Width, (float)maxH / _appLogo.Height);
+                if (scale > 1f) scale = 1f;
+
+                int logoW = Math.Max(1, (int)(_appLogo.Width * scale));
+                logoH = Math.Max(1, (int)(_appLogo.Height * scale));
+
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(_appLogo, (w - logoW) / 2, (h - logoH) / 2 - 14, logoW, logoH);
+            }
+
+            var textRect = new Rectangle(0, (h + logoH) / 2 + 4, w, 28);
+            TextRenderer.DrawText(g, "IPTV Newline", Theme.FontRegular, textRect, Theme.TextDim,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.NoPrefix);
+        }
+
+        private void ShowVideoIdle()
+        {
+            if (_videoIdle == null) return;
+            try
+            {
+                if (_videoView != null) _videoView.Visible = false;
+                _videoIdle.Visible = true;
+                _videoIdle.BringToFront();
+                _videoIdle.Invalidate();
+            }
+            catch { }
+        }
+
+        private void HideVideoIdle()
+        {
+            if (_videoIdle == null) return;
+            try
+            {
+                _videoIdle.Visible = false;
+                if (_videoView != null) _videoView.Visible = true;
+            }
+            catch { }
+        }
+
+        /// <summary>Показать заставку, если плеер уже не играет (события VLC).</summary>
+        private void ShowIdleIfStopped()
+        {
+            try
+            {
+                if (IsDisposed || !IsHandleCreated) return;
+                BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        if (IsDisposed || _mediaPlayer == null) return;
+
+                        // Событие Stopped приходит и при переключении канала —
+                        // не показываем логотип, если уже идёт открытие/буферизация.
+                        var state = _mediaPlayer.State;
+                        if (_mediaPlayer.IsPlaying ||
+                            state == VLCState.Opening ||
+                            state == VLCState.Buffering) return;
+
+                        ShowVideoIdle();
+                    }
+                    catch { }
+                }));
+            }
+            catch { }
+        }
+
+        private void HideIdleOnPlaying()
+        {
+            try
+            {
+                if (IsDisposed || !IsHandleCreated) return;
+                BeginInvoke(new Action(() =>
+                {
+                    if (!IsDisposed) HideVideoIdle();
+                }));
+            }
+            catch { }
+        }
+
         // ===== Полный экран =====
 
         private void ToggleFullscreen()
@@ -1929,10 +2041,11 @@ namespace IPTVViewer
             }
             try
             {
-                StopPlayback();
+                StopPlayback(false);
                 _currentMedia = new Media(_libVLC, new Uri(url));
                 _mediaPlayer.Volume = _volume.Value;
                 _mediaPlayer.Play(_currentMedia);
+                HideVideoIdle();
                 SetStatus("Воспроизведение: " + name);
             }
             catch (Exception ex)
@@ -1942,7 +2055,7 @@ namespace IPTVViewer
             }
         }
 
-        private void StopPlayback()
+        private void StopPlayback(bool showIdle = true)
         {
             try
             {
@@ -1956,6 +2069,9 @@ namespace IPTVViewer
             }
             catch { }
             SetStatus("Остановлено");
+
+            if (showIdle)
+                ShowVideoIdle();
         }
 
         private void OpenSettings()

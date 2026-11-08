@@ -339,6 +339,7 @@ namespace IPTVViewer
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = currentExe,
+                    Arguments = "--restarted",
                     WorkingDirectory = Path.GetDirectoryName(currentExe)
                 });
 

@@ -1,6 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace IPTVViewer
@@ -40,6 +42,16 @@ namespace IPTVViewer
                 return;
             }
 
+            // Один плеер на пользователя: повторный запуск активирует
+            // уже открытое окно вместо второго экземпляра.
+            // Флаг --restarted ставит автообновление: старый процесс ещё
+            // завершается, поэтому проверку пропускаем.
+            bool restarted = args != null && Array.IndexOf(args, "--restarted") >= 0;
+            if (!restarted && !TryAcquireSingleInstance())
+            {
+                return;
+            }
+
             CleanupOldExecutable();
 
             try
@@ -70,6 +82,82 @@ namespace IPTVViewer
                 MessageBox.Show("Критическая ошибка:\n" + ex.Message + "\n\nЛог: " + LogPath,
                     "IPTV Newline", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        // ===== Один экземпляр плеера =====
+
+        private const string InstanceMutexName = @"Local\IPTVNewline.SingleInstance";
+        private const int SW_RESTORE = 9;
+        private static System.Threading.Mutex _instanceMutex;
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        /// <summary>
+        /// Захватывает мьютекс единственного экземпляра. Если плеер уже
+        /// запущен — активирует его окно и показывает уведомление.
+        /// </summary>
+        private static bool TryAcquireSingleInstance()
+        {
+            bool created;
+            try
+            {
+                _instanceMutex = new System.Threading.Mutex(true, InstanceMutexName, out created);
+            }
+            catch
+            {
+                // Не смогли создать мьютекс — не мешаем запуску.
+                return true;
+            }
+
+            if (created) return true;
+
+            ActivateRunningInstance();
+
+            MessageBox.Show(
+                "IPTV Newline уже запущен.\n\n" +
+                "Запуск двух плееров невозможен — открыто уже работающее окно.",
+                "IPTV Newline", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            return false;
+        }
+
+        private static void ActivateRunningInstance()
+        {
+            try
+            {
+                var name = Process.GetCurrentProcess().ProcessName;
+                var deadline = DateTime.UtcNow.AddSeconds(4);
+
+                while (DateTime.UtcNow < deadline)
+                {
+                    Process target = null;
+                    foreach (var p in Process.GetProcessesByName(name))
+                    {
+                        try
+                        {
+                            if (p.Id == Process.GetCurrentProcess().Id) continue;
+                            if (p.MainWindowHandle == IntPtr.Zero) continue;
+                            target = p;
+                            break;
+                        }
+                        catch { }
+                    }
+
+                    if (target != null)
+                    {
+                        ShowWindowAsync(target.MainWindowHandle, SW_RESTORE);
+                        SetForegroundWindow(target.MainWindowHandle);
+                        return;
+                    }
+
+                    System.Threading.Thread.Sleep(200);
+                }
+            }
+            catch { }
         }
 
         private static readonly System.Threading.ManualResetEventSlim _vlcShutdownDone =
