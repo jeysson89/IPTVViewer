@@ -85,6 +85,27 @@ function Assert-Ok($Result, [string]$What) {
     }
 }
 
+# VLC встраивается в exe только при наличии vlc-data\vlc-*.zip.
+# На чистом клоне папка отсутствует (она в .gitignore), поэтому
+# собираем архивы из NuGet-пакета до publish.
+function Ensure-VlcData {
+    $x64 = Join-Path $projDir 'vlc-data\vlc-x64.zip'
+    $x86 = Join-Path $projDir 'vlc-data\vlc-x86.zip'
+    if ((Test-Path $x64) -and (Test-Path $x86)) { return }
+
+    Write-Step 'vlc-data archives missing; packing from NuGet package...'
+    $restore = Invoke-Native 'dotnet' @('restore', $csproj, '-r', 'win-x86')
+    Assert-Ok $restore 'dotnet restore'
+
+    & (Join-Path $projDir 'pack_vlc.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'pack_vlc.ps1 failed' }
+
+    if (-not (Test-Path $x64) -or -not (Test-Path $x86)) {
+        throw "VLC archives were not created: $x64 / $x86"
+    }
+    Write-Step 'vlc-data ready'
+}
+
 # ---------- version ----------
 $prevVersion = Get-ProjectVersion
 if (-not $Version) {
@@ -102,6 +123,8 @@ Write-Step "version: $prevVersion -> $Version (tag $tag)"
 # ---------- build ----------
 Get-Process -Name 'IPTVViewer' -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
+
+Ensure-VlcData
 
 if ($prevVersion -ne $Version) {
     Set-ProjectVersion $Version

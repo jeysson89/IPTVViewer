@@ -293,18 +293,77 @@ namespace IPTVViewer
             this.Text = "IPTV Newline — NEWLINE network";
             this.Icon = AppIcon.Get();
             this.StartPosition = FormStartPosition.Manual;
-            this.Location = new Point(_settings.WindowX, _settings.WindowY);
             // 970: кнопки источников (до x=590) + правая цепочка
             // (иконка настроек + 2 кнопки, 362 px) — уже нельзя
             this.MinimumSize = new Size(986, 520);
-            this.ClientSize = new Size(
-                Math.Max(_settings.WindowW, 970),
-                Math.Max(_settings.WindowH, 520));
+            RestoreWindowPlacement();
             this.BackColor = Theme.Bg;
             this.ForeColor = Theme.Text;
             this.Font = Theme.FontRegular;
             this.DoubleBuffered = true;
             this.KeyPreview = true;
+        }
+
+        /// <summary>Восстанавливает позицию/размер окна и не даёт ему
+        /// оказаться за пределами рабочего стола после смены мониторов.</summary>
+        private void RestoreWindowPlacement()
+        {
+            var size = new Size(
+                Math.Max(_settings.WindowW, 970),
+                Math.Max(_settings.WindowH, 520));
+            var bounds = new Rectangle(
+                new Point(_settings.WindowX, _settings.WindowY), size);
+
+            Screen target = null;
+            int bestArea = 0;
+            foreach (Screen screen in Screen.AllScreens)
+            {
+                var inter = Rectangle.Intersect(screen.WorkingArea, bounds);
+                int area = inter.Width > 0 && inter.Height > 0
+                    ? inter.Width * inter.Height : 0;
+                if (area > bestArea)
+                {
+                    bestArea = area;
+                    target = screen;
+                }
+            }
+            if (target == null) target = Screen.PrimaryScreen;
+
+            var wa = target.WorkingArea;
+            if (bounds.Width > wa.Width) bounds.Width = wa.Width;
+            if (bounds.Height > wa.Height) bounds.Height = wa.Height;
+
+            if (bestArea == 0)
+            {
+                bounds.X = wa.Left + Math.Max(0, (wa.Width - bounds.Width) / 2);
+                bounds.Y = wa.Top + Math.Max(0, (wa.Height - bounds.Height) / 2);
+            }
+
+            // Заголовок окна должен оставаться доступным на экране.
+            bounds.X = Math.Max(wa.Left - bounds.Width + 160,
+                Math.Min(wa.Right - 160, bounds.X));
+            bounds.Y = Math.Max(wa.Top,
+                Math.Min(wa.Bottom - 80, bounds.Y));
+
+            this.Location = bounds.Location;
+            this.ClientSize = bounds.Size;
+
+            if (_settings.WindowMaximized)
+                this.WindowState = FormWindowState.Maximized;
+        }
+
+        private void LayoutTopButtons()
+        {
+            if (_topPanel == null || _btnSettings == null ||
+                _btnOnTop == null || _btnToggleChannels == null)
+                return;
+
+            _btnSettings.Left = _topPanel.Width - _btnSettings.Width - 14;
+            _btnOnTop.Left = _btnSettings.Left - _btnOnTop.Width - 8;
+            _btnToggleChannels.Left = _btnOnTop.Left - _btnToggleChannels.Width - 8;
+            _btnSettings.Top = (_topPanel.Height - _btnSettings.Height) / 2;
+            _btnOnTop.Top = (_topPanel.Height - _btnOnTop.Height) / 2;
+            _btnToggleChannels.Top = (_topPanel.Height - _btnToggleChannels.Height) / 2;
         }
 
         private void InitVlc()
@@ -375,17 +434,8 @@ namespace IPTVViewer
             _btnToggleChannels.Click += (s, e) => ToggleChannelList();
             _topPanel.Controls.Add(_btnToggleChannels);
 
-            Action layoutTopButtons = () =>
-            {
-                _btnSettings.Left = _topPanel.Width - _btnSettings.Width - 14;
-                _btnOnTop.Left = _btnSettings.Left - _btnOnTop.Width - 8;
-                _btnToggleChannels.Left = _btnOnTop.Left - _btnToggleChannels.Width - 8;
-                _btnSettings.Top = (_topPanel.Height - _btnSettings.Height) / 2;
-                _btnOnTop.Top = (_topPanel.Height - _btnOnTop.Height) / 2;
-                _btnToggleChannels.Top = (_topPanel.Height - _btnToggleChannels.Height) / 2;
-            };
-            _topPanel.Resize += (s, e) => layoutTopButtons();
-            layoutTopButtons();
+            _topPanel.Resize += (s, e) => LayoutTopButtons();
+            LayoutTopButtons();
 
             _btnSourcePortal = CreateSourceButton("IPTVPORTAL", 0);
             _btnSourcePortal.Location = new Point(300, 19);
@@ -1121,6 +1171,7 @@ namespace IPTVViewer
             _split.Panel2Collapsed = _channelsHidden && !_fullscreen;
             _btnToggleChannels.Text = _channelsHidden ? "Показать список" : "Скрыть список";
             _btnToggleChannels.Width = _channelsHidden ? 136 : 120;
+            LayoutTopButtons();
 
             if (!silent)
                 SetStatus(_channelsHidden ? "Список каналов скрыт" : "Список каналов показан");
@@ -2041,12 +2092,30 @@ namespace IPTVViewer
             }
             try
             {
-                StopPlayback(false);
-                _currentMedia = new Media(_libVLC, new Uri(url));
-                _mediaPlayer.Volume = _volume.Value;
-                _mediaPlayer.Play(_currentMedia);
-                HideVideoIdle();
-                SetStatus("Воспроизведение: " + name);
+                // Play(newMedia) сам останавливает текущий поток. Явный
+                // синхронный Stop() на живом IPTV-стриме может блокировать
+                // UI-поток, поэтому старую медиа только освобождаем.
+                var oldMedia = _currentMedia;
+                Media media = null;
+                try
+                {
+                    media = new Media(_libVLC, new Uri(url));
+                    _mediaPlayer.Volume = _volume.Value;
+                    _mediaPlayer.Play(media);
+                    _currentMedia = media;
+                    HideVideoIdle();
+                    SetStatus("Воспроизведение: " + name);
+                }
+                catch
+                {
+                    try { media?.Dispose(); } catch { }
+                    throw;
+                }
+
+                if (oldMedia != null)
+                {
+                    try { oldMedia.Dispose(); } catch { }
+                }
             }
             catch (Exception ex)
             {
@@ -2107,6 +2176,20 @@ namespace IPTVViewer
             if (_fullscreen)
                 ExitFullscreen();
 
+            // Старые ссылки на контролы и таймер громкости станут невалидными
+            // после Controls.Clear() — обнуляем их до пересборки интерфейса.
+            try
+            {
+                if (_volumeBadgeTimer != null)
+                {
+                    _volumeBadgeTimer.Stop();
+                    _volumeBadgeTimer.Dispose();
+                }
+            }
+            catch { }
+            _volumeBadgeTimer = null;
+            _volumeBadge = null;
+
             Theme.SetMode(_settings.LightTheme);
             this.BackColor = Theme.Bg;
             this.ForeColor = Theme.Text;
@@ -2122,12 +2205,30 @@ namespace IPTVViewer
                 catch { }
             }
 
+            var oldAppLogo = _appLogo;
+            _appLogo = null;
+            _videoIdle = null;
+            _videoView = null;
+            _catButtons.Clear();
+
             _hoverIndex = -1;
             _searchPlaceholderActive = true;
             BuildUi();
             ApplySettings();
+            RebuildCategories();
+            ApplyChannelListVisibility(true);
             ApplyFilter("");
+
+            // Не показываем заставку поверх уже идущего видео.
+            if (_mediaPlayer != null &&
+                (_mediaPlayer.IsPlaying ||
+                 _mediaPlayer.State == VLCState.Opening ||
+                 _mediaPlayer.State == VLCState.Buffering))
+                HideVideoIdle();
+
             ResumeLayout(true);
+
+            try { oldAppLogo?.Dispose(); } catch { }
 
             BeginInvoke(new Action(() =>
             {
@@ -2257,19 +2358,45 @@ namespace IPTVViewer
         {
             base.OnFormClosing(e);
 
-            if (_fullscreen)
-            {
-                _fullscreen = false;
-                _fsTimer.Stop();
-            }
-
             try
             {
-                _settings.WindowX = this.Location.X;
-                _settings.WindowY = this.Location.Y;
-                _settings.WindowW = this.ClientSize.Width;
-                _settings.WindowH = this.ClientSize.Height;
-                _settings.ChannelsHidden = _channelsHidden && !_fullscreen;
+                bool wasFullscreen = _fullscreen;
+                var state = WindowState;
+
+                // Для maximized/minimized/fullscreen сохраняем нормальные
+                // границы, иначе следующий запуск откроет окно огромным,
+                // за экраном или с координатами minimized (-32000).
+                Rectangle normal;
+                if (wasFullscreen)
+                    normal = _prevBounds;
+                else if (state == FormWindowState.Normal)
+                    normal = Bounds;
+                else
+                    normal = RestoreBounds;
+
+                if (normal.Width > 0 && normal.Height > 0)
+                {
+                    _settings.WindowX = normal.X;
+                    _settings.WindowY = normal.Y;
+                }
+
+                if (!wasFullscreen && state == FormWindowState.Normal)
+                {
+                    _settings.WindowW = Math.Max(970, ClientSize.Width);
+                    _settings.WindowH = Math.Max(520, ClientSize.Height);
+                }
+
+                _settings.WindowMaximized = wasFullscreen
+                    ? _prevState == FormWindowState.Maximized
+                    : state == FormWindowState.Maximized;
+                _settings.ChannelsHidden = _channelsHidden;
+
+                if (wasFullscreen)
+                {
+                    _fullscreen = false;
+                    _fsTimer.Stop();
+                }
+
                 SettingsManager.Save(_settings);
             }
             catch { }

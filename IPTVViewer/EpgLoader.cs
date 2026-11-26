@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
@@ -242,17 +241,8 @@ namespace IPTVViewer
         private static bool ParseLines(Stream stream, IList<Channel> channels, EpgData data)
         {
             var wantedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var missingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var ch in channels)
-            {
-                if (!string.IsNullOrWhiteSpace(ch.TvgId))
-                    wantedIds.Add(ch.TvgId.Trim());
-                else
-                {
-                    var key = NormalizeName(ch.Name);
-                    if (key.Length > 0) missingNames.Add(key);
-                }
-            }
+            var wantedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            CollectWanted(channels, wantedIds, wantedNames);
 
             var displayNameToId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var now = DateTime.Now;
@@ -287,8 +277,8 @@ namespace IPTVViewer
 
                         if (!displayNameToId.ContainsKey(key))
                             displayNameToId[key] = id;
-                        if (missingNames.Contains(key))
-                            wantedIds.Add(id);
+                        if (wantedNames.Contains(key))
+                            AddIdVariants(wantedIds, id);
                     }
                     else if (line.StartsWith("<programme ", StringComparison.Ordinal))
                     {
@@ -299,7 +289,7 @@ namespace IPTVViewer
                             return false;
 
                         var channelId = AttrValue(line, "channel");
-                        if (string.IsNullOrWhiteSpace(channelId) || !wantedIds.Contains(channelId))
+                        if (string.IsNullOrWhiteSpace(channelId) || !IsWanted(wantedIds, channelId))
                             continue;
 
                         var start = ParseXmltvDateFast(AttrValue(line, "start"));
@@ -337,26 +327,121 @@ namespace IPTVViewer
             foreach (var list in data.ById.Values)
                 list.Sort((a, b) => a.Start.CompareTo(b.Start));
 
+            // XMLTV-идентификаторы иногда содержат суффикс "@провайдер",
+            // а в плейлисте указан только базовый id (и наоборот).
+            var baseToId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in data.ById.Keys)
+            {
+                var baseId = BaseId(id);
+                if (baseId.Length > 0 && !baseToId.ContainsKey(baseId))
+                    baseToId[baseId] = id;
+            }
+
             foreach (var ch in channels)
             {
                 var key = NormalizeName(ch.Name);
                 if (key.Length == 0) continue;
 
-                string id = null;
+                List<EpgProgram> list = null;
+                string actualId = null;
+
                 if (!string.IsNullOrWhiteSpace(ch.TvgId))
-                    id = ch.TvgId.Trim();
-                else if (displayNameToId.ContainsKey(key))
-                    id = displayNameToId[key];
+                    list = FindById(data.ById, baseToId, ch.TvgId, out actualId);
 
-                if (string.IsNullOrEmpty(id)) continue;
+                // Если tvg-id не нашёлся в XMLTV — пробуем сопоставить
+                // по display-name канала, а не оставляем канал без EPG.
+                if (list == null)
+                {
+                    string mappedId;
+                    if (displayNameToId.TryGetValue(key, out mappedId))
+                        list = FindById(data.ById, baseToId, mappedId, out actualId);
+                }
 
-                List<EpgProgram> list;
-                if (!data.ById.TryGetValue(id, out list)) continue;
+                if (list == null || string.IsNullOrEmpty(actualId))
+                    continue;
 
-                data.NameToId[key] = id;
+                data.NameToId[key] = actualId;
                 if (!data.ByName.ContainsKey(key))
                     data.ByName[key] = list;
             }
+        }
+
+        private static List<EpgProgram> FindById(
+            Dictionary<string, List<EpgProgram>> byId,
+            Dictionary<string, string> baseToId,
+            string id,
+            out string actualId)
+        {
+            actualId = null;
+            if (string.IsNullOrWhiteSpace(id)) return null;
+
+            id = id.Trim();
+            List<EpgProgram> list;
+            if (byId.TryGetValue(id, out list))
+            {
+                actualId = id;
+                return list;
+            }
+
+            var baseId = BaseId(id);
+            string mappedId;
+            if (baseToId.TryGetValue(baseId, out mappedId) &&
+                byId.TryGetValue(mappedId, out list))
+            {
+                actualId = mappedId;
+                return list;
+            }
+
+            return null;
+        }
+
+        private static void CollectWanted(IList<Channel> channels,
+            HashSet<string> wantedIds, HashSet<string> wantedNames)
+        {
+            foreach (var ch in channels)
+            {
+                if (ch == null) continue;
+
+                if (!string.IsNullOrWhiteSpace(ch.TvgId))
+                    AddIdVariants(wantedIds, ch.TvgId);
+
+                var key = NormalizeName(ch.Name);
+                if (key.Length > 0)
+                    wantedNames.Add(key);
+            }
+        }
+
+        private static void AddIdVariants(HashSet<string> ids, string id)
+        {
+            if (string.IsNullOrWhiteSpace(id)) return;
+
+            id = id.Trim();
+            ids.Add(id);
+
+            var baseId = BaseId(id);
+            if (!string.Equals(baseId, id, StringComparison.Ordinal))
+                ids.Add(baseId);
+        }
+
+        private static bool IsWanted(HashSet<string> wantedIds, string id)
+        {
+            if (string.IsNullOrWhiteSpace(id)) return false;
+
+            id = id.Trim();
+            if (wantedIds.Contains(id)) return true;
+
+            var baseId = BaseId(id);
+            return !string.Equals(baseId, id, StringComparison.Ordinal) &&
+                   wantedIds.Contains(baseId);
+        }
+
+        private static string BaseId(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id)) return "";
+
+            id = id.Trim();
+            int at = id.IndexOf('@');
+            return at > 0 ? id.Substring(0, at) : id;
         }
 
         private static string AttrValue(string line, string name)
@@ -393,8 +478,19 @@ namespace IPTVViewer
 
         private static DateTime ParseXmltvDateFast(string text)
         {
-            if (string.IsNullOrEmpty(text) || text.Length < 12)
+            return ParseXmltvDateCore(text);
+        }
+
+        /// <summary>
+        /// Единый разбор даты XMLTV: yyyyMMddHHmm[ss] с необязательным
+        /// смещением +HHMM, +HH:MM, -HHMM, -HH:MM или Z.
+        /// </summary>
+        private static DateTime ParseXmltvDateCore(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
                 return DateTime.MinValue;
+
+            text = text.Trim();
 
             int year, month, day, hour, minute, second = 0;
             if (!TryInt(text, 0, 4, out year) ||
@@ -404,8 +500,13 @@ namespace IPTVViewer
                 !TryInt(text, 10, 2, out minute))
                 return DateTime.MinValue;
 
-            if (text.Length >= 14)
-                TryInt(text, 12, 2, out second);
+            int pos = 12;
+            int parsedSecond;
+            if (TryInt(text, 12, 2, out parsedSecond))
+            {
+                second = parsedSecond;
+                pos = 14;
+            }
 
             if (year < 1990 || month < 1 || month > 12 || day < 1 || day > 31 ||
                 hour > 23 || minute > 59 || second > 59)
@@ -421,20 +522,39 @@ namespace IPTVViewer
                 return DateTime.MinValue;
             }
 
-            int offsetIndex = text.IndexOf(' ', 14);
-            if (offsetIndex > 0 && offsetIndex + 5 < text.Length &&
-                (text[offsetIndex + 1] == '+' || text[offsetIndex + 1] == '-'))
-            {
-                int oh, om;
-                if (TryInt(text, offsetIndex + 2, 2, out oh) && TryInt(text, offsetIndex + 4, 2, out om))
-                {
-                    int sign = text[offsetIndex + 1] == '-' ? -1 : 1;
-                    var utc = DateTime.SpecifyKind(dt, DateTimeKind.Utc).AddMinutes(-sign * (oh * 60 + om));
-                    return utc.ToLocalTime();
-                }
-            }
+            while (pos < text.Length && char.IsWhiteSpace(text[pos]))
+                pos++;
 
-            return dt;
+            if (pos >= text.Length)
+                return dt;
+
+            char marker = text[pos];
+            if (marker == 'Z' || marker == 'z')
+                return DateTime.SpecifyKind(dt, DateTimeKind.Utc).ToLocalTime();
+
+            if (marker != '+' && marker != '-')
+                return dt;
+
+            int sign = marker == '-' ? -1 : 1;
+            pos++;
+
+            int offsetHours, offsetMinutes;
+            if (!TryInt(text, pos, 2, out offsetHours))
+                return DateTime.MinValue;
+            pos += 2;
+
+            if (pos < text.Length && text[pos] == ':')
+                pos++;
+
+            if (!TryInt(text, pos, 2, out offsetMinutes))
+                return DateTime.MinValue;
+
+            if (offsetHours > 23 || offsetMinutes > 59)
+                return DateTime.MinValue;
+
+            var utc = DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+                .AddMinutes(-sign * (offsetHours * 60 + offsetMinutes));
+            return utc.ToLocalTime();
         }
 
         private static bool TryInt(string text, int index, int length, out int value)
@@ -575,17 +695,8 @@ namespace IPTVViewer
         private static void ParseXml(XmlReader reader, IList<Channel> channels, EpgData data)
         {
             var wantedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var missingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var ch in channels)
-            {
-                if (!string.IsNullOrWhiteSpace(ch.TvgId))
-                    wantedIds.Add(ch.TvgId.Trim());
-                else
-                {
-                    var key = NormalizeName(ch.Name);
-                    if (key.Length > 0) missingNames.Add(key);
-                }
-            }
+            var wantedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            CollectWanted(channels, wantedIds, wantedNames);
 
             var displayNameToId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var now = DateTime.Now;
@@ -628,13 +739,13 @@ namespace IPTVViewer
 
                     if (!displayNameToId.ContainsKey(key))
                         displayNameToId[key] = id;
-                    if (missingNames.Contains(key))
-                        wantedIds.Add(id);
+                    if (wantedNames.Contains(key))
+                        AddIdVariants(wantedIds, id);
                 }
                 else if (reader.Name == "programme")
                 {
                     var channelId = reader.GetAttribute("channel");
-                    if (string.IsNullOrWhiteSpace(channelId) || !wantedIds.Contains(channelId))
+                    if (string.IsNullOrWhiteSpace(channelId) || !IsWanted(wantedIds, channelId))
                     {
                         reader.Skip();
                         continue;
@@ -679,28 +790,7 @@ namespace IPTVViewer
 
         private static DateTime ParseXmltvDate(string text)
         {
-            if (string.IsNullOrWhiteSpace(text))
-                return DateTime.MinValue;
-
-            text = text.Trim();
-            var formats = new[]
-            {
-                "yyyyMMddHHmmss zzz",
-                "yyyyMMddHHmm zzz",
-                "yyyyMMddHHmmss",
-                "yyyyMMddHHmm"
-            };
-
-            DateTimeOffset dto;
-            if (DateTimeOffset.TryParseExact(text, formats, CultureInfo.InvariantCulture,
-                    DateTimeStyles.None, out dto))
-                return dto.ToLocalTime().DateTime;
-
-            if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture,
-                    DateTimeStyles.None, out dto))
-                return dto.ToLocalTime().DateTime;
-
-            return DateTime.MinValue;
+            return ParseXmltvDateCore(text);
         }
 
         public static string NormalizeName(string name)

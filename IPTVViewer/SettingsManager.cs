@@ -26,6 +26,7 @@ namespace IPTVViewer
         public int WindowY { get; set; } = 100;
         public int WindowW { get; set; } = 1100;
         public int WindowH { get; set; } = 650;
+        public bool WindowMaximized { get; set; } = false;
     }
 
     public static class SettingsManager
